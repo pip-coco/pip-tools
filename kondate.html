@@ -857,16 +857,25 @@
     var skipped = state.skipped[wk] || {};
     var map = new Map();
 
+    // 献立の材料も毎週の定番も、同じ入れものに入れて合算する。
+    // source に料理名が入っていれば献立由来、null なら定番由来。
     function push(ing, source){
+      if (!ing.name || !ing.name.trim()) return;   // 名前が空の行は買い物リストに出さない
       var k = itemKey(ing.name, ing.unit);
       var cur = map.get(k);
       if (!cur) {
-        cur = { key:k, name:ing.name, unit:ing.unit, qty:ing.qty, from:[] };
+        cur = { key:k, name:ing.name, unit:ing.unit, qty:ing.qty,
+                from:[], fromPlan:false, fromStaple:false };
         map.set(k, cur);
       } else {
         cur.qty = (cur.qty === null || ing.qty === null) ? null : cur.qty + ing.qty;
       }
-      if (source && cur.from.indexOf(source) < 0) cur.from.push(source);
+      if (source){
+        cur.fromPlan = true;
+        if (cur.from.indexOf(source) < 0) cur.from.push(source);
+      } else {
+        cur.fromStaple = true;
+      }
     }
 
     for (var day = 0; day < 7; day++){
@@ -877,11 +886,14 @@
         for (var b = 0; b < dish.ingredients.length; b++) push(dish.ingredients[b], dish.name);
       }
     }
+    state.staples.forEach(function(s){ if (!s.deleted) push(s, null); });
 
-    var planAll = Array.from(map.values());
-    var stapleAll = state.staples.map(function(s){
-      return { key:itemKey(s.name, s.unit), name:s.name, unit:s.unit, qty:s.qty, from:[], kind:'定番' };
+    var merged = Array.from(map.values());
+    merged.forEach(function(x){
+      if (x.fromPlan && x.fromStaple && x.from.indexOf('定番') < 0) x.from.push('定番');
+      if (!x.fromPlan) x.kind = '定番';
     });
+
     var extraAll = (state.extras[wk] || []).map(function(e){
       return { key:'x:'+e.id, name:e.name, unit:'', qty:null, from:[], extraId:e.id, kind:'その他' };
     });
@@ -890,11 +902,12 @@
     function hidden(x){ return !!skipped[x.key]; }
 
     return {
-      plan: planAll.filter(shown),
-      staples: stapleAll.filter(shown),
+      // 献立に出てくるものは「献立の材料」側にまとめる（定番と二重に出さない）
+      plan: merged.filter(function(x){ return x.fromPlan; }).filter(shown),
+      staples: merged.filter(function(x){ return !x.fromPlan; }).filter(shown),
       extras: extraAll.filter(shown),
       // 今週だけ外したもの。買い物リストの一番下から戻せる。
-      hidden: planAll.concat(stapleAll, extraAll).filter(hidden)
+      hidden: merged.concat(extraAll).filter(hidden)
     };
   }
 
@@ -1204,11 +1217,12 @@
     head.className = 'inghead';
     ['品名','数量','単位',''].forEach(function(t){ var s=document.createElement('span'); s.textContent=t; head.appendChild(s); });
     wrap.appendChild(head);
-    state.staples.forEach(function(s, idx){
+    // 消しても配列からは取り除かず、印だけ付ける（下の「消した定番」から戻せる）
+    state.staples.filter(function(s){ return !s.deleted; }).forEach(function(s){
       wrap.appendChild(ingRow(s, function(){
         snapshot();
-        state.staples.splice(idx,1);
-        save(); render(); toast('定番から外しました');
+        s.deleted = true;
+        save(); render(); toast('「' + (s.name || 'この行') + '」を定番から外しました');
       }));
     });
     var addS = document.createElement('button');
@@ -1218,6 +1232,51 @@
     });
     wrap.appendChild(addS);
     sbox.appendChild(wrap);
+
+    // 消した定番
+    var gone = state.staples.filter(function(s){ return s.deleted; });
+    if (!gone.length) return;
+
+    var h = document.createElement('h2');
+    h.className = 'seclabel';
+    var t = document.createElement('span'); t.textContent = '消した定番';
+    var right = document.createElement('span');
+    right.style.display='flex'; right.style.alignItems='baseline'; right.style.gap='12px';
+    var n = document.createElement('span'); n.className='n'; n.textContent = gone.length + '品';
+    var allBtn = document.createElement('button');
+    allBtn.type='button'; allBtn.className='restoreall'; allBtn.textContent='全部もどす';
+    allBtn.addEventListener('click', function(){
+      snapshot();
+      gone.forEach(function(s){ delete s.deleted; });
+      save(); render(); toast(gone.length + ' 品もどしました');
+    });
+    right.appendChild(n); right.appendChild(allBtn);
+    h.appendChild(t); h.appendChild(right);
+    sbox.appendChild(h);
+
+    gone.forEach(function(s){
+      var row = document.createElement('div');
+      row.className = 'row hiddenrow';
+      var main = document.createElement('div');
+      main.className = 'hiddenmain';
+      var nm = document.createElement('span'); nm.className='rowname';
+      var t1 = document.createElement('span'); t1.textContent = s.name || '(名前なし)';
+      var t2 = document.createElement('span'); t2.className='qty'; t2.textContent = fmtQty(s.qty, s.unit);
+      nm.appendChild(t1); nm.appendChild(t2);
+      main.appendChild(nm);
+
+      var back = document.createElement('button');
+      back.type='button'; back.className='restore'; back.textContent='もどす';
+      back.setAttribute('aria-label', (s.name || 'この行') + ' を定番に戻す');
+      back.addEventListener('click', function(){
+        delete s.deleted;
+        save(); render();
+        toast('「' + (s.name || 'この行') + '」を定番に戻しました', true);
+      });
+
+      row.appendChild(main); row.appendChild(back);
+      sbox.appendChild(row);
+    });
   }
 
   function editor(dish){
