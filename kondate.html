@@ -291,6 +291,63 @@
   .row.checked .box::after{transform:rotate(-45deg) scale(1);}
   .row.checked .rowname{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--line-strong);}
   .row.checked .qty{color:var(--muted);}
+  /* ===== 数量ボタン（押せることが分かる見た目にする） ===== */
+  .qtybtn{
+    flex:none;align-self:center;
+    display:inline-flex;align-items:center;gap:5px;
+    min-height:34px;padding:0 12px;
+    border:1px solid var(--accent);border-radius:17px;
+    background:var(--accent-soft);color:var(--accent);
+    font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:.84rem;font-variant-numeric:tabular-nums;
+    cursor:pointer;white-space:nowrap;
+  }
+  .qtybtn .pm{font-size:.76rem;opacity:.5;}
+  .qtybtn:hover{background:var(--accent);color:var(--surface);}
+  .qtybtn:hover .pm{opacity:.85;}
+  .qtybtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  .row.checked .qtybtn{
+    border-color:var(--line);background:transparent;color:var(--muted);
+  }
+  .row.checked .qtybtn .pm{opacity:.35;}
+  .qtyfree{
+    flex:none;align-self:center;
+    font-size:.8rem;color:var(--muted);
+    padding:0 14px;white-space:nowrap;
+  }
+  /* 途中まで買った印：まるが半分だけ塗られる */
+  .row.partial .box{
+    border-color:var(--done);
+    background:linear-gradient(90deg, var(--done) 0 50%, transparent 50% 100%);
+  }
+
+  /* 数量入力パネル */
+  .qtyblock{padding:8px 18px 22px;display:flex;flex-direction:column;gap:13px;}
+  .qtytotal{margin:0;font-size:.86rem;color:var(--muted);text-align:center;}
+  .stepper{display:flex;align-items:center;justify-content:center;gap:13px;}
+  .stepper button{
+    flex:none;width:62px;height:60px;border-radius:12px;
+    border:1.5px solid var(--line-strong);
+    background:var(--surface);color:var(--fg);
+    font-family:"IBM Plex Mono",monospace;font-size:1.15rem;line-height:1;cursor:pointer;
+  }
+  .stepper button:hover{border-color:var(--accent);color:var(--accent);}
+  .stepper button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  .stepper input{
+    width:104px;height:60px;min-width:0;
+    text-align:center;
+    font-family:"IBM Plex Mono",monospace;font-size:1.4rem;font-variant-numeric:tabular-nums;
+    border:1.5px solid var(--line-strong);border-radius:10px;
+    background:var(--surface);color:var(--fg);
+  }
+  .stepper input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent);}
+  .qtyrest{
+    margin:0;text-align:center;
+    font-family:"Zen Maru Gothic","Zen Kaku Gothic New",sans-serif;
+    font-size:1.08rem;font-weight:700;color:var(--accent);
+  }
+  .qtyacts{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;}
+
   /* 今週はずしたもの */
   .row.hiddenrow{
     background:var(--surface-2);
@@ -712,6 +769,25 @@
     <button type="button" class="close" id="sheetClose">とじる</button>
   </div>
 
+  <div class="sheetbg" id="qtyBg" hidden></div>
+  <div class="sheet" id="qtySheet" hidden>
+    <div class="sheethead"><h2 id="qtyTitle"></h2></div>
+    <div class="qtyblock">
+      <p class="qtytotal" id="qtyTotal"></p>
+      <div class="stepper">
+        <button type="button" id="qtyMinus">−</button>
+        <input type="number" id="qtyInput" min="0" step="any" inputmode="decimal" aria-label="かごに入れた数">
+        <button type="button" id="qtyPlus">＋</button>
+      </div>
+      <p class="qtyrest" id="qtyRest"></p>
+      <div class="qtyacts">
+        <button type="button" class="ghost" id="qtyAll">ぜんぶ買った</button>
+        <button type="button" class="ghost" id="qtyZero">0にもどす</button>
+      </div>
+    </div>
+    <button type="button" class="close" id="qtyClose">とじる</button>
+  </div>
+
   <div class="sheetbg" id="setBg" hidden></div>
   <div class="sheet" id="setSheet" hidden>
     <h2>設定</h2>
@@ -754,7 +830,7 @@
         i('バナナ',1,'房'), i('ヨーグルト',2,'個'), i('卵',1,'パック'), i('納豆',2,'パック')
       ],
       settings:{ weekStartDay: 3 },   // 0=日 1=月 2=火 3=水 4=木 5=金 6=土
-      plansByDate:{}, extras:{}, checked:{}, skipped:{}
+      plansByDate:{}, extras:{}, checked:{}, skipped:{}, bought:{}
     };
   }
   function uid(){ return Math.random().toString(36).slice(2,9); }
@@ -772,7 +848,7 @@
   var state = load();
   var view = { tab:'shop', week: weekStartOf(new Date()), openDish:null, dishFilter:'all' };
   var undoSnap = null, toastTimer = null;
-  var pickTarget = null, pickDate = null, pickCat = null;
+  var pickTarget = null, pickDate = null, pickCat = null, qtyItem = null;
 
   function load(){
     try{
@@ -788,6 +864,7 @@
     raw.extras = raw.extras || {};
     raw.checked = raw.checked || {};
     raw.skipped = raw.skipped || {};
+    raw.bought = raw.bought || {};
     raw.staples = raw.staples || [];
     raw.settings = raw.settings || {};
     if (typeof raw.settings.weekStartDay !== 'number') raw.settings.weekStartDay = 3;
@@ -1089,8 +1166,14 @@
     host.appendChild(h);
 
     items.forEach(function(it){
+      var isDone = !!checked[it.key];
+      var got = isDone ? 0 : boughtOf(it.key);
+      var hasNum = (typeof it.qty === 'number');
+      var partial = (!isDone && hasNum && got > 0);
+      var u = it.unit || '';
+
       var row = document.createElement('div');
-      row.className = 'row' + (checked[it.key] ? ' checked' : '');
+      row.className = 'row' + (isDone ? ' checked' : '') + (partial ? ' partial' : '');
 
       var tick = document.createElement('button');
       tick.type='button'; tick.className='rowtick';
@@ -1099,29 +1182,108 @@
       var nm = document.createElement('span'); nm.className='rowname';
       var t1 = document.createElement('span'); t1.textContent = it.name;
       nm.appendChild(t1);
-      // 手で足したものは分量を持たないので「適量」とは出さない
-      if (!it.extraId){
-        var t2 = document.createElement('span'); t2.className='qty';
-        t2.textContent = fmtQty(it.qty, it.unit);
-        nm.appendChild(t2);
-      }
       main.appendChild(nm);
-      if (it.from && it.from.length){
+
+      var subs = [];
+      if (it.from && it.from.length) subs.push(it.from.join('・'));
+      if (partial) subs.push(fmtNum(it.qty) + u + '中 ' + fmtNum(got) + u + ' かごへ');
+      if (subs.length){
         var fr = document.createElement('span'); fr.className='rowfrom';
-        fr.textContent = it.from.join('・');
+        fr.textContent = subs.join(' ／ ');
         main.appendChild(fr);
       }
       tick.appendChild(box); tick.appendChild(main);
       tick.addEventListener('click', function(){ toggleCheck(it.key); });
+      row.appendChild(tick);
+
+      // 数量。数字があるものは押せるボタンにして、買った数を入れられるようにする
+      if (!it.extraId){
+        if (hasNum){
+          var qb = document.createElement('button');
+          qb.type='button'; qb.className='qtybtn';
+          var qv = document.createElement('span');
+          qv.textContent = partial ? ('のこり ' + fmtNum(it.qty - got) + u) : (fmtNum(it.qty) + u);
+          var pm = document.createElement('span'); pm.className='pm'; pm.textContent = '±';
+          qb.appendChild(qv); qb.appendChild(pm);
+          qb.setAttribute('aria-label', it.name + ' の買った数を入力する');
+          qb.addEventListener('click', function(){ openQty(it); });
+          row.appendChild(qb);
+        } else {
+          var qs = document.createElement('span'); qs.className='qtyfree';
+          qs.textContent = '適量';
+          row.appendChild(qs);
+        }
+      }
 
       var x = document.createElement('button');
       x.type='button'; x.className='rowx'; x.textContent='✕';
       x.setAttribute('aria-label', it.name + ' を今週のリストから外す');
       x.addEventListener('click', function(){ skipItem(it); });
 
-      row.appendChild(tick); row.appendChild(x);
+      row.appendChild(x);
       host.appendChild(row);
     });
+  }
+
+  // ---------- 買った数（部分的に買ったとき） ----------
+  function boughtOf(k){
+    var m = state.bought[view.week];
+    return (m && typeof m[k] === 'number') ? m[k] : 0;
+  }
+  function fmtNum(n){ return String(Math.round(n * 100) / 100); }
+  function stepOf(total){ return total >= 50 ? 10 : 1; }
+
+  function openQty(it){
+    qtyItem = it;
+    renderQty();
+    document.getElementById('qtySheet').hidden = false;
+    document.getElementById('qtyBg').hidden = false;
+  }
+  function closeQty(){
+    qtyItem = null;
+    document.getElementById('qtySheet').hidden = true;
+    document.getElementById('qtyBg').hidden = true;
+  }
+  function renderQty(){
+    if (!qtyItem) return;
+    var total = qtyItem.qty, u = qtyItem.unit || '';
+    var done = !!(state.checked[view.week] || {})[qtyItem.key];
+    var got = done ? total : boughtOf(qtyItem.key);
+    var step = stepOf(total);
+
+    document.getElementById('qtyTitle').textContent = qtyItem.name;
+    document.getElementById('qtyTotal').textContent = 'ぜんぶで ' + fmtNum(total) + u;
+    document.getElementById('qtyInput').value = fmtNum(got);
+    document.getElementById('qtyMinus').textContent = step > 1 ? ('− ' + step) : '−';
+    document.getElementById('qtyPlus').textContent  = step > 1 ? ('＋ ' + step) : '＋';
+
+    var rest = Math.max(0, total - got);
+    document.getElementById('qtyRest').textContent =
+      rest > 0 ? ('のこり ' + fmtNum(rest) + u) : 'ぜんぶ買いました';
+  }
+  function applyQty(n){
+    if (!qtyItem) return;
+    var total = qtyItem.qty, k = qtyItem.key;
+    if (isNaN(n) || n < 0) n = 0;
+    if (n > total) n = total;
+
+    if (!state.bought[view.week]) state.bought[view.week] = {};
+    if (!state.checked[view.week]) state.checked[view.week] = {};
+
+    if (n >= total){
+      state.checked[view.week][k] = true;
+      delete state.bought[view.week][k];
+    } else if (n <= 0){
+      delete state.checked[view.week][k];
+      delete state.bought[view.week][k];
+    } else {
+      delete state.checked[view.week][k];
+      state.bought[view.week][k] = n;
+    }
+    save(); render(); renderQty();
+  }
+  function currentQty(){
+    return parseFloat(document.getElementById('qtyInput').value);
   }
 
   function countByCat(cat){
@@ -1507,6 +1669,8 @@
     if (!state.checked[view.week]) state.checked[view.week] = {};
     var c = state.checked[view.week];
     if (c[k]) delete c[k]; else c[k] = true;
+    // 全部買った／未着手にするので、途中まで買った記録は消す
+    if (state.bought[view.week]) delete state.bought[view.week][k];
     save(); render();
   }
 
@@ -1536,6 +1700,7 @@
   function uncheckAll(){
     snapshot();
     delete state.checked[view.week];
+    delete state.bought[view.week];
     save(); render();
     toast('チェックをはずしました');
   }
@@ -1612,6 +1777,22 @@
   document.getElementById('setClose').addEventListener('click', closeSettings);
   document.getElementById('setBg').addEventListener('click', closeSettings);
 
+  document.getElementById('qtyClose').addEventListener('click', closeQty);
+  document.getElementById('qtyBg').addEventListener('click', closeQty);
+  document.getElementById('qtyMinus').addEventListener('click', function(){
+    applyQty(currentQty() - stepOf(qtyItem.qty));
+  });
+  document.getElementById('qtyPlus').addEventListener('click', function(){
+    applyQty(currentQty() + stepOf(qtyItem.qty));
+  });
+  document.getElementById('qtyInput').addEventListener('change', function(){
+    applyQty(currentQty());
+  });
+  document.getElementById('qtyAll').addEventListener('click', function(){
+    applyQty(qtyItem.qty); closeQty();
+  });
+  document.getElementById('qtyZero').addEventListener('click', function(){ applyQty(0); });
+
   document.getElementById('addDish').addEventListener('click', function(){
     var cat = (view.dishFilter !== 'all') ? view.dishFilter : 'その他';
     var nd = d('新しい料理', cat, [i('', 1, '個')]);
@@ -1642,7 +1823,7 @@
   menuBtn.addEventListener('click', function(){ setMenu(menu.hidden); });
   scrim.addEventListener('click', function(){ setMenu(false); });
   document.addEventListener('keydown', function(e){
-    if (e.key === 'Escape'){ setMenu(false); closeSheet(); closeSettings(); }
+    if (e.key === 'Escape'){ setMenu(false); closeSheet(); closeSettings(); closeQty(); }
   });
   menu.addEventListener('click', function(e){
     var act = e.target && e.target.dataset ? e.target.dataset.act : null;
