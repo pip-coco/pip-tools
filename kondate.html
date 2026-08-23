@@ -39,6 +39,25 @@
     --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 28px -18px rgba(0,0,0,.8);
   }
 
+  /* ===== タブごとの色 =====
+     かいもの＝茄子紺 / こんだて＝藍 / レシピ＝緑 / 常備品＝黄
+     .app の data-tab が切り替わると、その中の --accent が全部入れ替わる */
+  .app[data-tab="shop"]  {--accent:#6E2E63;--accent-soft:#F3E9F1;}
+  .app[data-tab="plan"]  {--accent:#2E4E8C;--accent-soft:#E6EAF6;}
+  .app[data-tab="dish"]  {--accent:#2C6E49;--accent-soft:#E4F0E8;}
+  .app[data-tab="pantry"]{--accent:#8F6511;--accent-soft:#FBF1DA;}
+
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]) .app[data-tab="shop"]  {--accent:#DA9ECC;--accent-soft:#2B2130;}
+    :root:not([data-theme="light"]) .app[data-tab="plan"]  {--accent:#9AB4EC;--accent-soft:#1B2340;}
+    :root:not([data-theme="light"]) .app[data-tab="dish"]  {--accent:#7BC99A;--accent-soft:#16301F;}
+    :root:not([data-theme="light"]) .app[data-tab="pantry"]{--accent:#F0CB63;--accent-soft:#352A11;}
+  }
+  :root[data-theme="dark"] .app[data-tab="shop"]  {--accent:#DA9ECC;--accent-soft:#2B2130;}
+  :root[data-theme="dark"] .app[data-tab="plan"]  {--accent:#9AB4EC;--accent-soft:#1B2340;}
+  :root[data-theme="dark"] .app[data-tab="dish"]  {--accent:#7BC99A;--accent-soft:#16301F;}
+  :root[data-theme="dark"] .app[data-tab="pantry"]{--accent:#F0CB63;--accent-soft:#352A11;}
+
   *{box-sizing:border-box;}
   [hidden]{display:none !important;}
 
@@ -754,7 +773,7 @@
   @media (prefers-reduced-motion: reduce){ *{animation:none !important;transition:none !important;} }
 </style>
 
-<div class="app">
+<div class="app" id="app" data-tab="shop">
 
   <div class="tabs" id="mainTabs" role="tablist">
     <button type="button" role="tab" data-tab="shop" aria-selected="true">かいもの</button>
@@ -1143,6 +1162,7 @@
 
   // ================= 描画 =================
   function render(){
+    document.getElementById('app').setAttribute('data-tab', view.tab);
     document.getElementById('pane-plan').hidden = view.tab !== 'plan';
     document.getElementById('pane-shop').hidden = view.tab !== 'shop';
     document.getElementById('pane-dish').hidden = view.tab !== 'dish';
