@@ -27,9 +27,13 @@ jobs:
           python-version: "3.12"
 
       - name: 必要なライブラリを入れる
-        run: pip install --quiet requests
+        run: pip install --quiet requests openpyxl xlrd
+
+      - name: 読み取り処理の自己テスト（ネットにはつながない）
+        run: python scripts/test_parsers.py
 
       - name: データを収集する
+        timeout-minutes: 25
         run: python scripts/collect_toushi.py
 
       - name: 変更があればコミットする

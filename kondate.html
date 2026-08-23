@@ -2078,16 +2078,34 @@
   function hideToast(){ document.getElementById('toast').hidden = true; }
 
   // ---------- バックアップ ----------
+  // データは公開しない方針。端末間の受け渡しは
+  // 「バックアップを書き出す」→ ドライブやメールで送る →「バックアップを読み込む」で行う。
+  function withStamp(){
+    var o = JSON.parse(JSON.stringify(state));
+    o.exportedAt = new Date().toISOString();
+    return o;
+  }
+  function stampLabel(iso){
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return (d.getMonth()+1) + '/' + d.getDate() + ' ' +
+           pad(d.getHours()) + ':' + pad(d.getMinutes()) + ' の内容';
+  }
+
   async function exportJSON(){
     var stamp = key(new Date());
-    var filename = 'kondate-' + stamp + '.json';
-    var text = JSON.stringify(state, null, 2);
+    await saveJSON('kondate-' + stamp + '.json', JSON.stringify(withStamp(), null, 2));
+  }
+
+  async function saveJSON(filename, text, note){
+    var msg = note || '書き出しました';
     var dl = null;
     try{
       if (window.claude && typeof window.claude.use === 'function') dl = await window.claude.use('downloads');
     }catch(e){ dl = null; }
     if (dl){
-      try{ await dl.save({ filename: filename, data: text }); toast('書き出しました', true); }
+      try{ await dl.save({ filename: filename, data: text }); toast(msg, true); }
       catch(err){ if (!err || err.code !== 'declined') toast('書き出せませんでした', true); }
       return;
     }
@@ -2096,7 +2114,7 @@
     a.href = URL.createObjectURL(blob); a.download = filename;
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(a.href);
-    toast('書き出しました', true);
+    toast(msg, true);
   }
   function importJSON(file){
     var r = new FileReader();
@@ -2105,11 +2123,11 @@
         var data = JSON.parse(r.result);
         if (!data || !Array.isArray(data.dishes)) throw new Error('bad');
         snapshot();
-        state = data;
-        state.plans = state.plans||{}; state.extras = state.extras||{};
-        state.checked = state.checked||{}; state.skipped = state.skipped||{};
-        state.staples = state.staples||[];
-        save(); render(); toast('読み込みました');
+        // normalize を通すことで、古い形式のバックアップでも今の形に直して読み込める
+        state = normalize(data);
+        save(); render();
+        var s = stampLabel(data.exportedAt);
+        toast('読み込みました' + (s ? '（' + s + '）' : ''));
       }catch(e){
         toast('読み込めませんでした。書き出したJSONを選んでください', true);
       }
