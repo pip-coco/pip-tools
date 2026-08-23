@@ -398,6 +398,79 @@
     font-size:1.02rem;font-weight:700;
     border-bottom:1px solid var(--line);
   }
+  .sheethead{
+    flex:none;display:flex;align-items:stretch;
+    border-bottom:1px solid var(--line);
+  }
+  .sheethead h2{flex:1;border-bottom:0;}
+  .sheethead .back{
+    flex:none;width:46px;border:0;background:transparent;
+    color:var(--accent);font-size:1.4rem;line-height:1;cursor:pointer;
+  }
+  .sheethead .back:hover{background:var(--surface-2);}
+  .sheethead .back:focus-visible{outline:2px solid var(--accent);outline-offset:-3px;}
+  /* もどるボタンが出ているときだけ、見出しの左余白を詰める */
+  .sheethead .back:not([hidden]) + h2{padding-left:2px;}
+
+  /* シート内の1行（分類 / レシピ） */
+  #sheetList .srow{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+  }
+  #sheetList .srow .n{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:.8rem;font-variant-numeric:tabular-nums;
+    color:var(--muted);white-space:nowrap;
+  }
+  #sheetList .srow .tag{
+    font-size:.72rem;color:var(--muted);
+    border:1px solid var(--line-strong);border-radius:3px;
+    padding:1px 6px;white-space:nowrap;
+  }
+
+  /* ===== 分類のしぼりこみ ===== */
+  /* 折り返して全部見えるようにする（横スクロールは端が切れて気づけないため） */
+  .filters{
+    display:flex;flex-wrap:wrap;gap:8px;
+    padding:13px 16px;
+    border-bottom:1px solid var(--line);
+  }
+  .filters button{
+    flex:none;
+    display:inline-flex;align-items:center;gap:6px;
+    min-height:40px;padding:0 14px;
+    border:1px solid var(--line-strong);border-radius:20px;
+    background:var(--surface);color:var(--fg);
+    font:inherit;font-size:.88rem;cursor:pointer;white-space:nowrap;
+  }
+  .filters button .fn{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:.76rem;font-variant-numeric:tabular-nums;
+    opacity:.6;
+  }
+  .filters button:hover{border-color:var(--accent);}
+  .filters button:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+  .filters button[aria-pressed="true"]{
+    background:var(--accent);border-color:var(--accent);color:var(--surface);
+  }
+  .catbadge{
+    font-size:.72rem;color:var(--muted);
+    border:1px solid var(--line-strong);border-radius:3px;
+    padding:1px 6px;white-space:nowrap;margin-left:8px;
+  }
+
+  /* レシピ編集の分類ボタン */
+  #catPickWrap{display:flex;flex-wrap:wrap;gap:6px;}
+  #catPickWrap button{
+    min-height:40px;padding:0 14px;
+    border:1.5px solid var(--line-strong);border-radius:7px;
+    background:var(--surface);color:var(--fg);
+    font:inherit;font-size:.9rem;cursor:pointer;
+  }
+  #catPickWrap button:hover{border-color:var(--accent);}
+  #catPickWrap button:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+  #catPickWrap button[aria-pressed="true"]{
+    background:var(--accent);border-color:var(--accent);color:var(--surface);
+  }
   .sheet .list{flex:1;overflow-y:auto;}
   .sheet .list button{
     display:block;width:100%;
@@ -584,7 +657,7 @@
 
     <!-- ============ レシピ ============ -->
     <div class="pane" id="pane-dish" hidden>
-      <h2 class="seclabel"><span>レシピ</span><span class="n" id="dishCount"></span></h2>
+      <div class="filters" id="dishFilters"></div>
       <div id="dishList"></div>
       <div style="padding:16px 16px 4px;">
         <button type="button" class="ghost" id="addDish">＋ レシピを追加</button>
@@ -606,7 +679,10 @@
 
   <div class="sheetbg" id="sheetBg" hidden></div>
   <div class="sheet" id="sheet" hidden>
-    <h2 id="sheetTitle">つくる料理を選ぶ</h2>
+    <div class="sheethead">
+      <button type="button" class="back" id="sheetBack" aria-label="分類の一覧にもどる" hidden>‹</button>
+      <h2 id="sheetTitle">つくる料理を選ぶ</h2>
+    </div>
     <div class="list" id="sheetList"></div>
     <button type="button" class="close" id="sheetClose">とじる</button>
   </div>
@@ -634,19 +710,20 @@
 
   var KEY = 'kondate.v1';
   var WD = ['日','月','火','水','木','金','土'];
+  var CATS = ['主食','主菜','副菜','汁物','デザート','その他'];
 
   // ---------- 初期データ（4人分＝大人2＋子ども2 を想定。画面から直せます） ----------
   function seed(){
     return {
       dishes: [
-        d('チャーハン', [i('ごはん',4,'杯'), i('卵',3,'個'), i('長ねぎ',1,'本'), i('ハム',4,'枚'), i('ごま油',null,'')]),
-        d('ラザニア', [i('ラザニアシート',9,'枚'), i('合いびき肉',400,'g'), i('玉ねぎ',1,'個'), i('にんじん',1,'本'), i('トマト缶',1,'缶'), i('牛乳',300,'ml'), i('バター',30,'g'), i('小麦粉',30,'g'), i('ピザ用チーズ',150,'g')]),
-        d('パスタ', [i('スパゲッティ',400,'g'), i('玉ねぎ',1,'個'), i('ベーコン',100,'g'), i('トマト缶',1,'缶'), i('にんにく',1,'片'), i('オリーブオイル',null,''), i('粉チーズ',null,'')]),
-        d('煮浸し', [i('小松菜',2,'束'), i('油揚げ',2,'枚'), i('しょうが',1,'片'), i('めんつゆ',null,'')]),
-        d('刺身の盛り合わせ', [i('刺身盛り合わせ',1,'パック'), i('大根',1,'本'), i('大葉',1,'束'), i('わさび',null,''), i('しょうゆ',null,'')]),
-        d('カレー', [i('カレールー',1,'箱'), i('豚こま肉',300,'g'), i('じゃがいも',3,'個'), i('にんじん',1,'本'), i('玉ねぎ',2,'個'), i('ごはん',4,'杯'), i('福神漬け',1,'袋')]),
-        d('味噌汁', [i('豆腐',1,'丁'), i('長ねぎ',1,'本'), i('わかめ',null,''), i('味噌',null,''), i('だしパック',1,'個')]),
-        d('フルーツ盛り合わせ', [i('りんご',1,'個'), i('みかん',4,'個'), i('いちご',1,'パック'), i('キウイ',2,'個')])
+        d('チャーハン','主食', [i('ごはん',4,'杯'), i('卵',3,'個'), i('長ねぎ',1,'本'), i('ハム',4,'枚'), i('ごま油',null,'')]),
+        d('ラザニア','主菜', [i('ラザニアシート',9,'枚'), i('合いびき肉',400,'g'), i('玉ねぎ',1,'個'), i('にんじん',1,'本'), i('トマト缶',1,'缶'), i('牛乳',300,'ml'), i('バター',30,'g'), i('小麦粉',30,'g'), i('ピザ用チーズ',150,'g')]),
+        d('パスタ','主食', [i('スパゲッティ',400,'g'), i('玉ねぎ',1,'個'), i('ベーコン',100,'g'), i('トマト缶',1,'缶'), i('にんにく',1,'片'), i('オリーブオイル',null,''), i('粉チーズ',null,'')]),
+        d('煮浸し','副菜', [i('小松菜',2,'束'), i('油揚げ',2,'枚'), i('しょうが',1,'片'), i('めんつゆ',null,'')]),
+        d('刺身の盛り合わせ','主菜', [i('刺身盛り合わせ',1,'パック'), i('大根',1,'本'), i('大葉',1,'束'), i('わさび',null,''), i('しょうゆ',null,'')]),
+        d('カレー','主食', [i('カレールー',1,'箱'), i('豚こま肉',300,'g'), i('じゃがいも',3,'個'), i('にんじん',1,'本'), i('玉ねぎ',2,'個'), i('ごはん',4,'杯'), i('福神漬け',1,'袋')]),
+        d('味噌汁','汁物', [i('豆腐',1,'丁'), i('長ねぎ',1,'本'), i('わかめ',null,''), i('味噌',null,''), i('だしパック',1,'個')]),
+        d('フルーツ盛り合わせ','デザート', [i('りんご',1,'個'), i('みかん',4,'個'), i('いちご',1,'パック'), i('キウイ',2,'個')])
       ],
       staples: [
         i('バナナ',1,'房'), i('ヨーグルト',2,'個'), i('卵',1,'パック'), i('納豆',2,'パック')
@@ -656,13 +733,21 @@
     };
   }
   function uid(){ return Math.random().toString(36).slice(2,9); }
-  function d(name, ings){ return { id: uid(), name: name, ingredients: ings }; }
+  function d(name, cat, ings){ return { id: uid(), name: name, cat: cat, ingredients: ings }; }
+
+  // 分類がまだ付いていない古いデータ用の対応表
+  var LEGACY_CAT = {
+    'チャーハン':'主食', 'パスタ':'主食', 'カレー':'主食',
+    'ラザニア':'主菜', '刺身の盛り合わせ':'主菜',
+    '煮浸し':'副菜', '味噌汁':'汁物', 'フルーツ盛り合わせ':'デザート'
+  };
   function i(name, qty, unit){ return { id: uid(), name: name, qty: qty, unit: unit }; }
 
   // ---------- 保存・読み込み ----------
   var state = load();
-  var view = { tab:'shop', week: weekStartOf(new Date()), openDish:null };
-  var undoSnap = null, toastTimer = null, pickTarget = null;
+  var view = { tab:'shop', week: weekStartOf(new Date()), openDish:null, dishFilter:'all' };
+  var undoSnap = null, toastTimer = null;
+  var pickTarget = null, pickDate = null, pickCat = null;
 
   function load(){
     try{
@@ -681,6 +766,11 @@
     raw.staples = raw.staples || [];
     raw.settings = raw.settings || {};
     if (typeof raw.settings.weekStartDay !== 'number') raw.settings.weekStartDay = 3;
+
+    // 分類が無いレシピに分類を付ける
+    raw.dishes.forEach(function(dish){
+      if (CATS.indexOf(dish.cat) < 0) dish.cat = LEGACY_CAT[dish.name] || 'その他';
+    });
 
     if (!raw.plansByDate){
       raw.plansByDate = {};
@@ -916,30 +1006,91 @@
     });
   }
 
-  function renderDishes(){
-    var host = document.getElementById('dishList');
-    host.textContent = '';
-    document.getElementById('dishCount').textContent = state.dishes.length + '品';
+  function countByCat(cat){
+    return state.dishes.filter(function(x){ return x.cat === cat; }).length;
+  }
 
-    state.dishes.forEach(function(dish){
-      var row = document.createElement('div');
-      row.className = 'dishrow';
-      var open = document.createElement('button');
-      open.type='button'; open.className='open';
-      var nm = document.createElement('span'); nm.textContent = dish.name;
-      var cnt = document.createElement('span'); cnt.className='cnt';
-      cnt.textContent = '材料 ' + dish.ingredients.length + (view.openDish === dish.id ? ' ▲' : ' ▼');
-      open.appendChild(nm); open.appendChild(cnt);
-      open.addEventListener('click', function(){
-        view.openDish = (view.openDish === dish.id) ? null : dish.id;
-        render();
-      });
-      row.appendChild(open);
-      host.appendChild(row);
-      if (view.openDish === dish.id) host.appendChild(editor(dish));
+  function renderDishes(){
+    // しぼりこみボタン（レシピが1つも無い分類は出さない）
+    var fhost = document.getElementById('dishFilters');
+    fhost.textContent = '';
+    var options = [{ key:'all', label:'すべて', n: state.dishes.length }];
+    CATS.forEach(function(c){
+      var n = countByCat(c);
+      if (n) options.push({ key:c, label:c, n:n });
+    });
+    if (options.length > 1 && CATS.indexOf(view.dishFilter) >= 0 && !countByCat(view.dishFilter)){
+      view.dishFilter = 'all';   // 中身が無くなった分類が選ばれたままにならないように
+    }
+    options.forEach(function(o){
+      var b = document.createElement('button');
+      b.type='button';
+      var lb = document.createElement('span'); lb.textContent = o.label;
+      var nb = document.createElement('span'); nb.className='fn'; nb.textContent = o.n;
+      b.appendChild(lb); b.appendChild(nb);
+      b.setAttribute('aria-label', o.label + ' ' + o.n + '品');
+      b.setAttribute('aria-pressed', view.dishFilter === o.key ? 'true' : 'false');
+      b.addEventListener('click', function(){ view.dishFilter = o.key; render(); });
+      fhost.appendChild(b);
     });
 
-    // 毎週の定番
+    var host = document.getElementById('dishList');
+    host.textContent = '';
+
+    var showing = view.dishFilter === 'all'
+      ? state.dishes
+      : state.dishes.filter(function(x){ return x.cat === view.dishFilter; });
+
+    if (!showing.length){
+      var em = document.createElement('div');
+      em.className = 'empty';
+      em.innerHTML = '<span class="mark">○</span>レシピがありません。<br>下の「＋ レシピを追加」から登録できます。';
+      host.appendChild(em);
+    }
+
+    // 「すべて」のときは分類ごとに見出しを付けてまとめる
+    if (view.dishFilter === 'all'){
+      CATS.forEach(function(cat){
+        var group = state.dishes.filter(function(x){ return x.cat === cat; });
+        if (!group.length) return;
+        var h = document.createElement('h2');
+        h.className = 'seclabel';
+        var t = document.createElement('span'); t.textContent = cat;
+        var n = document.createElement('span'); n.className='n'; n.textContent = group.length + '品';
+        h.appendChild(t); h.appendChild(n);
+        host.appendChild(h);
+        group.forEach(function(dish){ appendDishRow(host, dish, false); });
+      });
+    } else {
+      showing.forEach(function(dish){ appendDishRow(host, dish, false); });
+    }
+
+    renderStaples();
+  }
+
+  function appendDishRow(host, dish, showTag){
+    var row = document.createElement('div');
+    row.className = 'dishrow';
+    var open = document.createElement('button');
+    open.type='button'; open.className='open';
+    var nm = document.createElement('span'); nm.textContent = dish.name;
+    if (showTag){
+      var tg = document.createElement('span'); tg.className='catbadge'; tg.textContent = dish.cat;
+      nm.appendChild(tg);
+    }
+    var cnt = document.createElement('span'); cnt.className='cnt';
+    cnt.textContent = '材料 ' + dish.ingredients.length + (view.openDish === dish.id ? ' ▲' : ' ▼');
+    open.appendChild(nm); open.appendChild(cnt);
+    open.addEventListener('click', function(){
+      view.openDish = (view.openDish === dish.id) ? null : dish.id;
+      render();
+    });
+    row.appendChild(open);
+    host.appendChild(row);
+    if (view.openDish === dish.id) host.appendChild(editor(dish));
+  }
+
+  function renderStaples(){
     var sbox = document.getElementById('stapleBox');
     sbox.textContent = '';
     var wrap = document.createElement('div');
@@ -973,6 +1124,28 @@
     nameF.setAttribute('aria-label','料理名');
     nameF.addEventListener('input', function(){ dish.name = nameF.value; save(); });
     wrap.appendChild(nameF);
+
+    // 分類えらび
+    var clab = document.createElement('div');
+    clab.className = 'inghead';
+    var cs = document.createElement('span'); cs.textContent = '分類';
+    clab.appendChild(cs);
+    wrap.appendChild(clab);
+
+    var cwrap = document.createElement('div');
+    cwrap.id = 'catPickWrap';
+    CATS.forEach(function(cat){
+      var b = document.createElement('button');
+      b.type='button'; b.textContent = cat;
+      b.setAttribute('aria-pressed', dish.cat === cat ? 'true' : 'false');
+      b.addEventListener('click', function(){
+        dish.cat = cat;
+        if (view.dishFilter !== 'all' && view.dishFilter !== cat) view.dishFilter = cat;
+        save(); render();
+      });
+      cwrap.appendChild(b);
+    });
+    wrap.appendChild(cwrap);
 
     var head = document.createElement('div');
     head.className='inghead';
@@ -1038,26 +1211,75 @@
   }
 
   // ================= 操作 =================
+  // 分類を選ぶ → その分類のレシピが出る、の2段階
   function openSheet(dayIndex){
     pickTarget = key(addDays(view.week, dayIndex));
-    var list = document.getElementById('sheetList');
-    list.textContent = '';
-    if (!state.dishes.length){
-      var p = document.createElement('div');
-      p.className='empty';
-      p.textContent = 'レシピがまだありません。「レシピ」タブで登録してください。';
-      list.appendChild(p);
-    }
-    state.dishes.forEach(function(dish){
-      var b = document.createElement('button');
-      b.type='button'; b.textContent = dish.name;
-      b.addEventListener('click', function(){ addToDay(pickTarget, dish.id); closeSheet(); });
-      list.appendChild(b);
-    });
-    var dt = addDays(view.week, dayIndex);
-    document.getElementById('sheetTitle').textContent = md(dt) + '(' + WD[dt.getDay()] + ') につくる料理';
+    pickDate = addDays(view.week, dayIndex);
+    pickCat = null;
+    renderSheet();
     document.getElementById('sheet').hidden = false;
     document.getElementById('sheetBg').hidden = false;
+  }
+
+  function renderSheet(){
+    var list = document.getElementById('sheetList');
+    var back = document.getElementById('sheetBack');
+    var title = document.getElementById('sheetTitle');
+    var dayTitle = md(pickDate) + '(' + WD[pickDate.getDay()] + ') につくる料理';
+    list.textContent = '';
+
+    if (!state.dishes.length){
+      back.hidden = true;
+      title.textContent = dayTitle;
+      var p = document.createElement('div');
+      p.className = 'empty';
+      p.textContent = 'レシピがまだありません。「レシピ」タブで登録してください。';
+      list.appendChild(p);
+      return;
+    }
+
+    if (pickCat === null){
+      back.hidden = true;
+      title.textContent = dayTitle;
+      sheetRow(list, 'すべて', state.dishes.length + '品', false, function(){
+        pickCat = 'all'; renderSheet();
+      });
+      CATS.forEach(function(cat){
+        var n = countByCat(cat);
+        if (!n) return;
+        sheetRow(list, cat, n + '品', false, function(){ pickCat = cat; renderSheet(); });
+      });
+      return;
+    }
+
+    back.hidden = false;
+    title.textContent = (pickCat === 'all') ? 'すべてのレシピ' : pickCat;
+    var arr = (pickCat === 'all')
+      ? state.dishes
+      : state.dishes.filter(function(x){ return x.cat === pickCat; });
+    arr.forEach(function(dish){
+      sheetRow(list, dish.name, (pickCat === 'all') ? dish.cat : '', true, function(){
+        addToDay(pickTarget, dish.id);
+        closeSheet();
+      });
+    });
+  }
+
+  function sheetRow(host, label, right, rightIsTag, onClick){
+    var b = document.createElement('button');
+    b.type = 'button';
+    var row = document.createElement('span'); row.className = 'srow';
+    var l = document.createElement('span'); l.textContent = label;
+    row.appendChild(l);
+    if (right){
+      var r = document.createElement('span');
+      r.className = rightIsTag ? 'tag' : 'n';
+      r.textContent = right;
+      row.appendChild(r);
+    }
+    b.appendChild(row);
+    b.addEventListener('click', onClick);
+    host.appendChild(b);
   }
   function closeSheet(){
     document.getElementById('sheet').hidden = true;
@@ -1221,16 +1443,22 @@
   document.getElementById('prevWeek2').addEventListener('click', function(){ shiftWeek(-1); });
   document.getElementById('nextWeek2').addEventListener('click', function(){ shiftWeek(1); });
 
+  document.getElementById('sheetBack').addEventListener('click', function(){
+    pickCat = null; renderSheet();
+  });
   document.getElementById('sheetClose').addEventListener('click', closeSheet);
   document.getElementById('sheetBg').addEventListener('click', closeSheet);
   document.getElementById('setClose').addEventListener('click', closeSettings);
   document.getElementById('setBg').addEventListener('click', closeSettings);
 
   document.getElementById('addDish').addEventListener('click', function(){
-    var nd = d('新しい料理', [i('', 1, '個')]);
+    var cat = (view.dishFilter !== 'all') ? view.dishFilter : 'その他';
+    var nd = d('新しい料理', cat, [i('', 1, '個')]);
     state.dishes.push(nd);
     view.openDish = nd.id;
     save(); render();
+    var el = document.getElementById('catPickWrap');
+    if (el && el.scrollIntoView) el.scrollIntoView({ block:'center' });
   });
 
   document.getElementById('addForm').addEventListener('submit', function(e){
