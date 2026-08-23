@@ -1,0 +1,1278 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>こんだて表</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Maru+Gothic:wght@500;700&family=IBM+Plex+Mono:wght@500&display=swap">
+
+<style>
+  /* ===== 色（買い物リストアプリと同じ配色で揃えています） ===== */
+  :root{
+    --bg:#EFEEF2;
+    --surface:#FFFFFF;
+    --surface-2:#F6F4F8;
+    --fg:#221E26;
+    --muted:#6B6473;
+    --line:#E1DDE6;
+    --line-strong:#C9C2D0;
+    --accent:#6E2E63;
+    --accent-soft:#F3E9F1;
+    --done:#456F37;
+    --today:#B4732A;
+    --shadow:0 1px 2px rgba(34,24,38,.05), 0 12px 28px -18px rgba(34,24,38,.35);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#15121A; --surface:#1F1B25; --surface-2:#282231;
+      --fg:#ECE7F0; --muted:#A099A9; --line:#332C3B; --line-strong:#4A4155;
+      --accent:#DA9ECC; --accent-soft:#2B2130; --done:#8CBE72; --today:#E0AC6A;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 28px -18px rgba(0,0,0,.8);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#15121A; --surface:#1F1B25; --surface-2:#282231;
+    --fg:#ECE7F0; --muted:#A099A9; --line:#332C3B; --line-strong:#4A4155;
+    --accent:#DA9ECC; --accent-soft:#2B2130; --done:#8CBE72; --today:#E0AC6A;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 28px -18px rgba(0,0,0,.8);
+  }
+
+  *{box-sizing:border-box;}
+  [hidden]{display:none !important;}
+
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--fg);
+    font-family:"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;
+    font-size:16px;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+  }
+
+  .app{
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    height:100dvh;
+    max-width:480px;
+    margin:0 auto;
+    background:var(--surface);
+    border-left:1px solid var(--line);
+    border-right:1px solid var(--line);
+  }
+  @media (max-width:520px){ .app{border-left:0;border-right:0;} }
+
+  /* ===== タブ ===== */
+  .tabs{
+    flex:none;
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    border-bottom:1px solid var(--line);
+    background:var(--surface);
+  }
+  .tabs button{
+    appearance:none;
+    border:0;
+    border-bottom:2.5px solid transparent;
+    background:transparent;
+    color:var(--muted);
+    font-family:"Zen Maru Gothic","Zen Kaku Gothic New",sans-serif;
+    font-size:.98rem;
+    font-weight:700;
+    letter-spacing:.05em;
+    padding:15px 4px 13px;
+    min-height:50px;
+    cursor:pointer;
+  }
+  .tabs button[aria-selected="true"]{
+    color:var(--accent);
+    border-bottom-color:var(--accent);
+  }
+  .tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:-3px;}
+
+  main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+  .pane{padding:0 0 28px;}
+
+  /* ===== 週の切り替え ===== */
+  .weekbar{
+    position:sticky;
+    top:0;
+    z-index:5;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    padding:11px 8px;
+    background:var(--surface-2);
+    border-bottom:1px solid var(--line);
+  }
+  .weekbar button{
+    flex:none;
+    width:44px;height:44px;
+    border:0;border-radius:50%;
+    background:transparent;color:var(--muted);
+    font-size:1.1rem;cursor:pointer;
+  }
+  .weekbar button:hover{background:var(--surface);color:var(--fg);}
+  .weekbar button:focus-visible{outline:2px solid var(--accent);}
+  .weeklabel{
+    flex:1;
+    text-align:center;
+    font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:.95rem;
+    font-variant-numeric:tabular-nums;
+    letter-spacing:.02em;
+  }
+  .weeklabel .sub{
+    display:block;
+    font-family:"Zen Kaku Gothic New",sans-serif;
+    font-size:.72rem;
+    letter-spacing:.1em;
+    color:var(--muted);
+    margin-top:-2px;
+  }
+
+  /* ===== 献立表 ===== */
+  .day{
+    display:grid;
+    grid-template-columns:58px 1fr;
+    gap:0 12px;
+    padding:13px 16px 13px 12px;
+    border-bottom:1px solid var(--line);
+  }
+  .day.is-today{background:var(--accent-soft);}
+  .daylabel{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:flex-start;
+    padding-top:5px;
+    gap:1px;
+  }
+  .daylabel .wd{
+    font-family:"Zen Maru Gothic",sans-serif;
+    font-size:.95rem;
+    font-weight:700;
+  }
+  .daylabel .dt{
+    font-family:"IBM Plex Mono",monospace;
+    font-size:.75rem;
+    font-variant-numeric:tabular-nums;
+    color:var(--muted);
+  }
+  .day.sat .wd{color:#3E6FA8;}
+  .day.sun .wd{color:#A8484A;}
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]) .day.sat .wd{color:#8FB6E0;}
+    :root:not([data-theme="light"]) .day.sun .wd{color:#E39194;}
+  }
+  :root[data-theme="dark"] .day.sat .wd{color:#8FB6E0;}
+  :root[data-theme="dark"] .day.sun .wd{color:#E39194;}
+  .day.is-today .daylabel .dt{color:var(--today);font-weight:700;}
+
+  .dishes{
+    display:flex;
+    flex-wrap:wrap;
+    gap:7px;
+    align-items:flex-start;
+    min-height:40px;
+  }
+  .chip{
+    display:inline-flex;
+    align-items:center;
+    gap:2px;
+    background:var(--surface-2);
+    border:1px solid var(--line-strong);
+    border-radius:16px;
+    padding:0 4px 0 12px;
+    font-size:.9rem;
+    max-width:100%;
+  }
+  .chip .cn{padding:6px 0;word-break:break-word;}
+  .chip .cx{
+    flex:none;
+    width:30px;height:30px;
+    border:0;background:transparent;
+    color:var(--muted);
+    font-size:.8rem;
+    cursor:pointer;border-radius:50%;
+  }
+  .chip .cx:hover{color:var(--fg);background:var(--line);}
+  .chip .cx:focus-visible{outline:2px solid var(--accent);}
+
+  .addchip{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-width:40px;height:40px;
+    padding:0 12px;
+    border:1.5px dashed var(--line-strong);
+    border-radius:16px;
+    background:transparent;
+    color:var(--muted);
+    font-size:1rem;
+    cursor:pointer;
+  }
+  .addchip:hover{border-color:var(--accent);color:var(--accent);}
+  .addchip:focus-visible{outline:2px solid var(--accent);}
+
+  /* ===== 買い物リスト ===== */
+  .seclabel{
+    margin:0;
+    padding:20px 18px 7px;
+    font-family:"Zen Maru Gothic","Zen Kaku Gothic New",sans-serif;
+    font-size:.78rem;
+    font-weight:500;
+    letter-spacing:.14em;
+    color:var(--muted);
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    gap:10px;
+  }
+  .seclabel .n{
+    font-family:"IBM Plex Mono",monospace;
+    font-variant-numeric:tabular-nums;
+    letter-spacing:0;
+  }
+
+  .row{
+    display:flex;
+    align-items:stretch;
+    border-bottom:1px solid var(--line);
+  }
+  .rowtick{
+    flex:1;
+    display:flex;
+    align-items:center;
+    gap:12px;
+    min-height:54px;
+    padding:7px 4px 7px 18px;
+    border:0;background:transparent;color:var(--fg);
+    font:inherit;text-align:left;cursor:pointer;
+  }
+  .rowtick:focus-visible{outline:2px solid var(--accent);outline-offset:-3px;}
+  .box{
+    flex:none;width:22px;height:22px;
+    border:2px solid var(--line-strong);
+    border-radius:50%;
+    display:grid;place-content:center;
+  }
+  .box::after{
+    content:"";width:9px;height:5px;
+    border-left:2.5px solid var(--surface);
+    border-bottom:2.5px solid var(--surface);
+    transform:rotate(-45deg) scale(0);
+    transition:transform .14s ease;
+  }
+  .rowmain{flex:1;min-width:0;}
+  .rowname{
+    display:flex;align-items:baseline;gap:8px;
+    line-height:1.4;flex-wrap:wrap;
+  }
+  .rowname .qty{
+    font-family:"IBM Plex Mono",monospace;
+    font-size:.88rem;
+    font-variant-numeric:tabular-nums;
+    color:var(--accent);
+    white-space:nowrap;
+  }
+  .rowfrom{
+    font-size:.74rem;
+    color:var(--muted);
+    line-height:1.5;
+    margin-top:1px;
+  }
+  .row.checked .box{border-color:var(--done);background:var(--done);}
+  .row.checked .box::after{transform:rotate(-45deg) scale(1);}
+  .row.checked .rowname{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--line-strong);}
+  .row.checked .qty{color:var(--muted);}
+  .rowx{
+    flex:none;width:48px;
+    border:0;background:transparent;color:var(--line-strong);
+    font-size:.95rem;cursor:pointer;
+  }
+  .rowx:hover{color:var(--fg);}
+  .rowx:focus-visible{outline:2px solid var(--accent);outline-offset:-3px;}
+
+  /* ===== レシピ ===== */
+  .dishrow{
+    display:flex;align-items:stretch;
+    border-bottom:1px solid var(--line);
+  }
+  .dishrow > button.open{
+    flex:1;display:flex;align-items:center;justify-content:space-between;gap:10px;
+    min-height:54px;padding:9px 16px;
+    border:0;background:transparent;color:var(--fg);
+    font:inherit;text-align:left;cursor:pointer;
+  }
+  .dishrow > button.open:focus-visible{outline:2px solid var(--accent);outline-offset:-3px;}
+  .dishrow .cnt{
+    font-size:.78rem;color:var(--muted);
+    font-family:"IBM Plex Mono",monospace;
+    font-variant-numeric:tabular-nums;
+    white-space:nowrap;
+  }
+  .editor{
+    padding:6px 16px 20px;
+    border-bottom:1px solid var(--line);
+    background:var(--surface-2);
+    display:flex;flex-direction:column;gap:10px;
+  }
+  .ingrow{
+    display:grid;
+    grid-template-columns:1fr 58px 52px 40px;
+    gap:6px;
+    align-items:center;
+  }
+  .ingrow input{
+    font:inherit;font-size:.92rem;
+    height:42px;min-width:0;
+    padding:0 9px;
+    border:1px solid var(--line-strong);
+    border-radius:5px;
+    background:var(--surface);color:var(--fg);
+  }
+  .ingrow input:focus{outline:2px solid var(--accent);outline-offset:-1px;}
+  .ingrow input[type="number"]{text-align:right;font-family:"IBM Plex Mono",monospace;}
+  .ingrow .del{
+    height:42px;border:0;border-radius:5px;
+    background:transparent;color:var(--line-strong);
+    font-size:.9rem;cursor:pointer;
+  }
+  .ingrow .del:hover{color:var(--fg);background:var(--line);}
+  .inghead{
+    display:grid;
+    grid-template-columns:1fr 58px 52px 40px;
+    gap:6px;
+    font-size:.7rem;color:var(--muted);letter-spacing:.08em;
+    padding:2px 2px 0;
+  }
+  .inghead span:nth-child(2),.inghead span:nth-child(3){text-align:center;}
+
+  .ghost{
+    align-self:flex-start;
+    border:1px solid var(--line-strong);
+    background:var(--surface);
+    color:var(--fg);
+    font:inherit;font-size:.88rem;
+    border-radius:6px;
+    padding:9px 15px;min-height:42px;
+    cursor:pointer;
+  }
+  .ghost:hover{border-color:var(--accent);color:var(--accent);}
+  .ghost:focus-visible{outline:2px solid var(--accent);}
+  .ghost.danger:hover{border-color:#A8484A;color:#A8484A;}
+
+  .editrow{display:flex;gap:8px;flex-wrap:wrap;}
+  .namefield{
+    width:100%;font:inherit;font-size:1rem;font-weight:700;
+    height:46px;padding:0 12px;
+    border:1px solid var(--line-strong);border-radius:6px;
+    background:var(--surface);color:var(--fg);
+  }
+  .namefield:focus{outline:2px solid var(--accent);outline-offset:-1px;}
+
+  /* ===== ボトムシート（レシピを選ぶ） ===== */
+  .sheetbg{
+    position:absolute;inset:0;z-index:40;
+    background:rgba(20,14,24,.42);
+  }
+  .sheet{
+    position:absolute;left:0;right:0;bottom:0;z-index:41;
+    max-height:74%;
+    display:flex;flex-direction:column;
+    background:var(--surface);
+    border-top-left-radius:14px;border-top-right-radius:14px;
+    box-shadow:var(--shadow);
+    animation:up .2s ease;
+  }
+  @keyframes up{from{transform:translateY(14px);opacity:0;}to{transform:none;opacity:1;}}
+  .sheet h2{
+    margin:0;padding:16px 18px 12px;
+    font-family:"Zen Maru Gothic",sans-serif;
+    font-size:1.02rem;font-weight:700;
+    border-bottom:1px solid var(--line);
+  }
+  .sheet .list{flex:1;overflow-y:auto;}
+  .sheet .list button{
+    display:block;width:100%;
+    min-height:52px;padding:13px 18px;
+    border:0;border-bottom:1px solid var(--line);
+    background:transparent;color:var(--fg);
+    font:inherit;text-align:left;cursor:pointer;
+  }
+  .sheet .list button:hover{background:var(--surface-2);}
+  .sheet .list button:focus-visible{outline:2px solid var(--accent);outline-offset:-3px;}
+  .sheet .close{
+    flex:none;margin:0;
+    padding:14px 18px calc(16px + env(safe-area-inset-bottom,0px));
+    border:0;border-top:1px solid var(--line);
+    background:var(--surface-2);color:var(--muted);
+    font:inherit;font-size:.92rem;cursor:pointer;min-height:52px;
+  }
+
+  /* ===== 追加バー ===== */
+  .addbar{
+    flex:none;display:flex;gap:8px;
+    padding:11px 14px calc(11px + env(safe-area-inset-bottom,0px));
+    border-top:1px solid var(--line);
+    background:var(--surface-2);
+  }
+  .addbar input{
+    flex:1;min-width:0;font:inherit;font-size:1.0625rem;
+    height:48px;padding:0 14px;
+    border:1px solid var(--line-strong);border-radius:7px;
+    background:var(--surface);color:var(--fg);
+  }
+  .addbar input::placeholder{color:var(--muted);opacity:.75;}
+  .addbar input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent);}
+  .addbar button{
+    flex:none;height:48px;padding:0 20px;
+    border:0;border-radius:7px;
+    background:var(--accent);color:var(--surface);
+    font-family:"Zen Maru Gothic",sans-serif;font-size:.98rem;font-weight:700;
+    letter-spacing:.05em;cursor:pointer;
+  }
+  .addbar button:active{opacity:.85;}
+  .addbar button:focus-visible{outline:2px solid var(--fg);outline-offset:2px;}
+
+  /* ===== メニュー ===== */
+  .toolbar{
+    flex:none;display:flex;justify-content:flex-end;
+    padding:2px 8px;border-bottom:1px solid var(--line);
+    background:var(--surface);
+  }
+  .toolbar button{
+    width:44px;height:36px;border:0;border-radius:8px;
+    background:transparent;color:var(--muted);
+    font-size:1.2rem;cursor:pointer;
+  }
+  .toolbar button:hover{background:var(--surface-2);color:var(--fg);}
+  .toolbar button:focus-visible{outline:2px solid var(--accent);}
+  .scrim{position:absolute;inset:0;z-index:20;}
+  .menu{
+    position:absolute;z-index:21;top:88px;right:14px;width:238px;
+    background:var(--surface);border:1px solid var(--line);
+    border-radius:8px;box-shadow:var(--shadow);padding:6px;
+    display:flex;flex-direction:column;gap:1px;
+  }
+  .menu button{
+    border:0;background:transparent;color:var(--fg);
+    font:inherit;font-size:.94rem;text-align:left;
+    padding:11px 12px;border-radius:5px;cursor:pointer;min-height:44px;
+  }
+  .menu button:hover{background:var(--surface-2);}
+  .menu button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
+  .menu hr{border:0;border-top:1px solid var(--line);margin:5px 4px;}
+
+  /* ===== トースト ===== */
+  .toast{
+    position:absolute;left:12px;right:12px;
+    bottom:calc(76px + env(safe-area-inset-bottom,0px));
+    z-index:50;
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    background:var(--fg);color:var(--surface);
+    border-radius:8px;padding:10px 10px 10px 16px;
+    font-size:.88rem;box-shadow:var(--shadow);
+    animation:up .2s ease;
+  }
+  .toast.high{bottom:16px;}
+  .toast button{
+    flex:none;border:0;background:transparent;color:var(--surface);
+    font:inherit;font-weight:700;text-decoration:underline;text-underline-offset:3px;
+    padding:8px 10px;min-height:40px;cursor:pointer;border-radius:5px;
+  }
+
+  /* ===== 設定 ===== */
+  .setblock{padding:18px 18px 24px;}
+  .setblock h3{
+    margin:0 0 4px;
+    font-family:"Zen Maru Gothic",sans-serif;
+    font-size:1rem;font-weight:700;
+  }
+  .sethelp{
+    margin:0 0 14px;font-size:.85rem;color:var(--accent);
+  }
+  .setnote{
+    margin:14px 0 0;font-size:.79rem;color:var(--muted);line-height:1.75;
+  }
+  .wdpick{
+    display:grid;
+    grid-template-columns:repeat(7,1fr);
+    gap:5px;
+  }
+  /* id で指定しているのは、上の .sheet .list button に負けないようにするため */
+  #wdPick button{
+    display:block;width:100%;
+    min-height:50px;
+    padding:0;
+    border:1.5px solid var(--line-strong);
+    border-radius:7px;
+    background:var(--surface-2);
+    color:var(--fg);
+    font-family:"Zen Maru Gothic","Zen Kaku Gothic New",sans-serif;
+    font-size:1.02rem;font-weight:700;
+    text-align:center;
+    cursor:pointer;
+  }
+  #wdPick button:hover{border-color:var(--accent);background:var(--surface);}
+  #wdPick button:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+  #wdPick button[aria-pressed="true"]{
+    background:var(--accent);border-color:var(--accent);color:var(--surface);
+  }
+
+  .empty{
+    padding:52px 30px;text-align:center;
+    color:var(--muted);font-size:.93rem;line-height:1.9;
+  }
+  .empty .mark{
+    display:block;font-family:"Zen Maru Gothic",sans-serif;
+    font-size:2rem;color:var(--line-strong);margin-bottom:12px;
+  }
+
+  @media (prefers-reduced-motion: reduce){ *{animation:none !important;transition:none !important;} }
+</style>
+
+<div class="app">
+
+  <div class="tabs" role="tablist">
+    <button type="button" role="tab" data-tab="shop" aria-selected="true">かいもの</button>
+    <button type="button" role="tab" data-tab="plan" aria-selected="false">こんだて</button>
+    <button type="button" role="tab" data-tab="dish" aria-selected="false">レシピ</button>
+  </div>
+
+  <div class="toolbar">
+    <button type="button" id="menuBtn" aria-label="メニューを開く" aria-expanded="false">⋯</button>
+  </div>
+
+  <div class="scrim" id="scrim" hidden></div>
+  <div class="menu" id="menu" hidden>
+    <button type="button" data-act="settings">設定</button>
+    <hr>
+    <button type="button" data-act="clearWeek">この週の献立を空にする</button>
+    <button type="button" data-act="uncheckAll">チェックを全部はずす</button>
+    <hr>
+    <button type="button" data-act="export">バックアップを書き出す</button>
+    <button type="button" data-act="import">バックアップを読み込む</button>
+  </div>
+
+  <main>
+    <!-- ============ 献立表 ============ -->
+    <div class="pane" id="pane-plan">
+      <div class="weekbar">
+        <button type="button" id="prevWeek" aria-label="前の週">‹</button>
+        <div class="weeklabel"><span id="weekRange"></span><span class="sub" id="planSub"></span></div>
+        <button type="button" id="nextWeek" aria-label="次の週">›</button>
+      </div>
+      <div id="days"></div>
+    </div>
+
+    <!-- ============ 買い物リスト ============ -->
+    <div class="pane" id="pane-shop" hidden>
+      <div class="weekbar">
+        <button type="button" id="prevWeek2" aria-label="前の週">‹</button>
+        <div class="weeklabel"><span id="weekRange2"></span><span class="sub" id="shopCount"></span></div>
+        <button type="button" id="nextWeek2" aria-label="次の週">›</button>
+      </div>
+      <div id="shopBody"></div>
+    </div>
+
+    <!-- ============ レシピ ============ -->
+    <div class="pane" id="pane-dish" hidden>
+      <h2 class="seclabel"><span>レシピ</span><span class="n" id="dishCount"></span></h2>
+      <div id="dishList"></div>
+      <div style="padding:16px 16px 4px;">
+        <button type="button" class="ghost" id="addDish">＋ レシピを追加</button>
+      </div>
+      <h2 class="seclabel"><span>毎週の定番</span></h2>
+      <div id="stapleBox"></div>
+    </div>
+  </main>
+
+  <div class="toast" id="toast" hidden>
+    <span id="toastMsg"></span>
+    <button type="button" id="undoBtn">元に戻す</button>
+  </div>
+
+  <form class="addbar" id="addForm" hidden>
+    <input type="text" id="extraInput" placeholder="リストに直接足す（例：トイレットペーパー）" autocomplete="off" enterkeyhint="done" aria-label="買い物リストに追加">
+    <button type="submit">追加</button>
+  </form>
+
+  <div class="sheetbg" id="sheetBg" hidden></div>
+  <div class="sheet" id="sheet" hidden>
+    <h2 id="sheetTitle">つくる料理を選ぶ</h2>
+    <div class="list" id="sheetList"></div>
+    <button type="button" class="close" id="sheetClose">とじる</button>
+  </div>
+
+  <div class="sheetbg" id="setBg" hidden></div>
+  <div class="sheet" id="setSheet" hidden>
+    <h2>設定</h2>
+    <div class="list">
+      <div class="setblock">
+        <h3>週のはじまり</h3>
+        <p class="sethelp" id="setHelp"></p>
+        <div class="wdpick" id="wdPick"></div>
+        <p class="setnote">買い物に行く曜日に合わせると、その日から1週間分の材料がまとまります。<br>登録済みの献立は日付ごとに保存されているので、区切りを変えても消えません。</p>
+      </div>
+    </div>
+    <button type="button" class="close" id="setClose">とじる</button>
+  </div>
+
+  <input type="file" id="fileInput" accept="application/json,.json" hidden>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var KEY = 'kondate.v1';
+  var WD = ['日','月','火','水','木','金','土'];
+
+  // ---------- 初期データ（4人分＝大人2＋子ども2 を想定。画面から直せます） ----------
+  function seed(){
+    return {
+      dishes: [
+        d('チャーハン', [i('ごはん',4,'杯'), i('卵',3,'個'), i('長ねぎ',1,'本'), i('ハム',4,'枚'), i('ごま油',null,'')]),
+        d('ラザニア', [i('ラザニアシート',9,'枚'), i('合いびき肉',400,'g'), i('玉ねぎ',1,'個'), i('にんじん',1,'本'), i('トマト缶',1,'缶'), i('牛乳',300,'ml'), i('バター',30,'g'), i('小麦粉',30,'g'), i('ピザ用チーズ',150,'g')]),
+        d('パスタ', [i('スパゲッティ',400,'g'), i('玉ねぎ',1,'個'), i('ベーコン',100,'g'), i('トマト缶',1,'缶'), i('にんにく',1,'片'), i('オリーブオイル',null,''), i('粉チーズ',null,'')]),
+        d('煮浸し', [i('小松菜',2,'束'), i('油揚げ',2,'枚'), i('しょうが',1,'片'), i('めんつゆ',null,'')]),
+        d('刺身の盛り合わせ', [i('刺身盛り合わせ',1,'パック'), i('大根',1,'本'), i('大葉',1,'束'), i('わさび',null,''), i('しょうゆ',null,'')]),
+        d('カレー', [i('カレールー',1,'箱'), i('豚こま肉',300,'g'), i('じゃがいも',3,'個'), i('にんじん',1,'本'), i('玉ねぎ',2,'個'), i('ごはん',4,'杯'), i('福神漬け',1,'袋')]),
+        d('味噌汁', [i('豆腐',1,'丁'), i('長ねぎ',1,'本'), i('わかめ',null,''), i('味噌',null,''), i('だしパック',1,'個')]),
+        d('フルーツ盛り合わせ', [i('りんご',1,'個'), i('みかん',4,'個'), i('いちご',1,'パック'), i('キウイ',2,'個')])
+      ],
+      staples: [
+        i('バナナ',1,'房'), i('ヨーグルト',2,'個'), i('卵',1,'パック'), i('納豆',2,'パック')
+      ],
+      settings:{ weekStartDay: 3 },   // 0=日 1=月 2=火 3=水 4=木 5=金 6=土
+      plansByDate:{}, extras:{}, checked:{}, skipped:{}
+    };
+  }
+  function uid(){ return Math.random().toString(36).slice(2,9); }
+  function d(name, ings){ return { id: uid(), name: name, ingredients: ings }; }
+  function i(name, qty, unit){ return { id: uid(), name: name, qty: qty, unit: unit }; }
+
+  // ---------- 保存・読み込み ----------
+  var state = load();
+  var view = { tab:'shop', week: weekStartOf(new Date()), openDish:null };
+  var undoSnap = null, toastTimer = null, pickTarget = null;
+
+  function load(){
+    try{
+      var raw = JSON.parse(localStorage.getItem(KEY));
+      if (raw && Array.isArray(raw.dishes)) return normalize(raw);
+    }catch(e){}
+    return seed();
+  }
+
+  // 古い保存形式（週ごと×曜日番号）を、日付ごとの形に移し替える。
+  // こうしておくと「週のはじまり」を変えても献立が迷子にならない。
+  function normalize(raw){
+    raw.extras = raw.extras || {};
+    raw.checked = raw.checked || {};
+    raw.skipped = raw.skipped || {};
+    raw.staples = raw.staples || [];
+    raw.settings = raw.settings || {};
+    if (typeof raw.settings.weekStartDay !== 'number') raw.settings.weekStartDay = 3;
+
+    if (!raw.plansByDate){
+      raw.plansByDate = {};
+      var old = raw.plans || {};
+      Object.keys(old).forEach(function(wk){
+        Object.keys(old[wk] || {}).forEach(function(idx){
+          var dk = key(addDays(wk, parseInt(idx, 10)));
+          raw.plansByDate[dk] = (raw.plansByDate[dk] || []).concat(old[wk][idx] || []);
+        });
+      });
+    }
+    delete raw.plans;
+    return raw;
+  }
+  function save(){
+    try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){}
+  }
+  function snapshot(){ undoSnap = JSON.parse(JSON.stringify(state)); }
+  function undo(){
+    if(!undoSnap) return;
+    state = undoSnap; undoSnap = null;
+    save(); render(); hideToast();
+  }
+
+  // ---------- 日付まわり（週のはじまりは設定で変えられる） ----------
+  function startDay(){
+    var v = state && state.settings ? state.settings.weekStartDay : 3;
+    return (typeof v === 'number') ? v : 3;
+  }
+  function weekStartOf(date){
+    var t = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    var back = (t.getDay() - startDay() + 7) % 7;
+    t.setDate(t.getDate() - back);
+    return key(t);
+  }
+  function key(dt){
+    return dt.getFullYear() + '-' + pad(dt.getMonth()+1) + '-' + pad(dt.getDate());
+  }
+  function pad(n){ return (n<10?'0':'') + n; }
+  function fromKey(k){
+    var p = k.split('-');
+    return new Date(+p[0], +p[1]-1, +p[2]);
+  }
+  function addDays(k, n){
+    var dt = fromKey(k); dt.setDate(dt.getDate()+n); return dt;
+  }
+  function md(dt){ return (dt.getMonth()+1) + '/' + dt.getDate(); }
+
+  // ---------- 集計 ----------
+  function itemKey(name, unit){ return name + ' ' + (unit||''); }
+  function fmtQty(q, unit){
+    if (q === null || q === undefined) return '適量';
+    var n = Math.round(q*100)/100;
+    return String(n) + (unit||'');
+  }
+
+  function buildList(){
+    var wk = view.week;
+    var skipped = state.skipped[wk] || {};
+    var map = new Map();
+
+    function push(ing, source){
+      var k = itemKey(ing.name, ing.unit);
+      var cur = map.get(k);
+      if (!cur) {
+        cur = { key:k, name:ing.name, unit:ing.unit, qty:ing.qty, from:[] };
+        map.set(k, cur);
+      } else {
+        cur.qty = (cur.qty === null || ing.qty === null) ? null : cur.qty + ing.qty;
+      }
+      if (source && cur.from.indexOf(source) < 0) cur.from.push(source);
+    }
+
+    for (var day = 0; day < 7; day++){
+      var ids = state.plansByDate[key(addDays(wk, day))] || [];
+      for (var a = 0; a < ids.length; a++){
+        var dish = findDish(ids[a]);
+        if (!dish) continue;
+        for (var b = 0; b < dish.ingredients.length; b++) push(dish.ingredients[b], dish.name);
+      }
+    }
+
+    var fromPlan = Array.from(map.values()).filter(function(x){ return !skipped[x.key]; });
+
+    var staples = state.staples.map(function(s){
+      return { key:itemKey(s.name, s.unit), name:s.name, unit:s.unit, qty:s.qty, from:[] };
+    }).filter(function(x){ return !skipped[x.key]; });
+
+    var extras = (state.extras[wk] || []).map(function(e){
+      return { key:'x:'+e.id, name:e.name, unit:'', qty:null, from:[], extraId:e.id };
+    });
+
+    return { plan:fromPlan, staples:staples, extras:extras };
+  }
+
+  function findDish(id){
+    for (var n = 0; n < state.dishes.length; n++) if (state.dishes[n].id === id) return state.dishes[n];
+    return null;
+  }
+
+  // ================= 描画 =================
+  function render(){
+    document.getElementById('pane-plan').hidden = view.tab !== 'plan';
+    document.getElementById('pane-shop').hidden = view.tab !== 'shop';
+    document.getElementById('pane-dish').hidden = view.tab !== 'dish';
+    document.getElementById('addForm').hidden = view.tab !== 'shop';
+    document.getElementById('toast').classList.toggle('high', view.tab !== 'shop');
+    Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function(b){
+      b.setAttribute('aria-selected', b.dataset.tab === view.tab ? 'true' : 'false');
+    });
+    renderWeekLabels();
+    if (view.tab === 'plan') renderPlan();
+    if (view.tab === 'shop') renderShop();
+    if (view.tab === 'dish') renderDishes();
+  }
+
+  function renderWeekLabels(){
+    var s = fromKey(view.week), e = addDays(view.week, 6);
+    var txt = md(s) + '(' + WD[s.getDay()] + ') 〜 ' + md(e) + '(' + WD[e.getDay()] + ')';
+    document.getElementById('weekRange').textContent = txt;
+    document.getElementById('weekRange2').textContent = txt;
+    document.getElementById('planSub').textContent = WD[startDay()] + '曜はじまりの1週間';
+  }
+
+  function renderPlan(){
+    var host = document.getElementById('days');
+    host.textContent = '';
+    var todayKey = key(new Date());
+
+    for (var n = 0; n < 7; n++){
+      (function(n){
+        var dt = addDays(view.week, n);
+        var row = document.createElement('div');
+        row.className = 'day';
+        if (dt.getDay() === 6) row.classList.add('sat');
+        if (dt.getDay() === 0) row.classList.add('sun');
+        if (key(dt) === todayKey) row.classList.add('is-today');
+
+        var lab = document.createElement('div');
+        lab.className = 'daylabel';
+        var wd = document.createElement('span'); wd.className = 'wd'; wd.textContent = WD[dt.getDay()];
+        var dd = document.createElement('span'); dd.className = 'dt'; dd.textContent = md(dt);
+        lab.appendChild(wd); lab.appendChild(dd);
+
+        var dk = key(dt);
+        var box = document.createElement('div');
+        box.className = 'dishes';
+        (state.plansByDate[dk] || []).forEach(function(id, idx){
+          var dish = findDish(id);
+          if (!dish) return;
+          var chip = document.createElement('span'); chip.className = 'chip';
+          var cn = document.createElement('span'); cn.className = 'cn'; cn.textContent = dish.name;
+          var cx = document.createElement('button');
+          cx.type='button'; cx.className='cx'; cx.textContent='✕';
+          cx.setAttribute('aria-label', dish.name + ' を外す');
+          cx.addEventListener('click', function(){ removeFromDay(dk, idx); });
+          chip.appendChild(cn); chip.appendChild(cx);
+          box.appendChild(chip);
+        });
+        var add = document.createElement('button');
+        add.type='button'; add.className='addchip'; add.textContent='＋';
+        add.setAttribute('aria-label', md(dt) + ' に料理を追加');
+        add.addEventListener('click', function(){ openSheet(n); });
+        box.appendChild(add);
+
+        row.appendChild(lab); row.appendChild(box);
+        host.appendChild(row);
+      })(n);
+    }
+  }
+
+  function renderShop(){
+    var host = document.getElementById('shopBody');
+    host.textContent = '';
+    var data = buildList();
+    var checked = state.checked[view.week] || {};
+    var all = data.plan.concat(data.staples, data.extras);
+    var doneN = all.filter(function(x){ return checked[x.key]; }).length;
+
+    document.getElementById('shopCount').textContent =
+      all.length ? (all.length - doneN) + ' 品のこり' : '';
+
+    if (!all.length){
+      var em = document.createElement('div');
+      em.className = 'empty';
+      em.innerHTML = '<span class="mark">○</span>まだ何もありません。<br>「こんだて」タブで料理を入れると、<br>材料がここに集まります。';
+      host.appendChild(em);
+      return;
+    }
+
+    section(host, '献立の材料', data.plan, checked);
+    section(host, '毎週の定番', data.staples, checked);
+    section(host, 'その他', data.extras, checked);
+  }
+
+  function section(host, title, items, checked){
+    if (!items.length) return;
+    var h = document.createElement('h2');
+    h.className = 'seclabel';
+    var t = document.createElement('span'); t.textContent = title;
+    var n = document.createElement('span'); n.className='n'; n.textContent = items.length + '品';
+    h.appendChild(t); h.appendChild(n);
+    host.appendChild(h);
+
+    items.forEach(function(it){
+      var row = document.createElement('div');
+      row.className = 'row' + (checked[it.key] ? ' checked' : '');
+
+      var tick = document.createElement('button');
+      tick.type='button'; tick.className='rowtick';
+      var box = document.createElement('span'); box.className='box';
+      var main = document.createElement('span'); main.className='rowmain';
+      var nm = document.createElement('span'); nm.className='rowname';
+      var t1 = document.createElement('span'); t1.textContent = it.name;
+      var t2 = document.createElement('span'); t2.className='qty'; t2.textContent = fmtQty(it.qty, it.unit);
+      nm.appendChild(t1); nm.appendChild(t2);
+      main.appendChild(nm);
+      if (it.from && it.from.length){
+        var fr = document.createElement('span'); fr.className='rowfrom';
+        fr.textContent = it.from.join('・');
+        main.appendChild(fr);
+      }
+      tick.appendChild(box); tick.appendChild(main);
+      tick.addEventListener('click', function(){ toggleCheck(it.key); });
+
+      var x = document.createElement('button');
+      x.type='button'; x.className='rowx'; x.textContent='✕';
+      x.setAttribute('aria-label', it.name + ' を今週のリストから外す');
+      x.addEventListener('click', function(){ skipItem(it); });
+
+      row.appendChild(tick); row.appendChild(x);
+      host.appendChild(row);
+    });
+  }
+
+  function renderDishes(){
+    var host = document.getElementById('dishList');
+    host.textContent = '';
+    document.getElementById('dishCount').textContent = state.dishes.length + '品';
+
+    state.dishes.forEach(function(dish){
+      var row = document.createElement('div');
+      row.className = 'dishrow';
+      var open = document.createElement('button');
+      open.type='button'; open.className='open';
+      var nm = document.createElement('span'); nm.textContent = dish.name;
+      var cnt = document.createElement('span'); cnt.className='cnt';
+      cnt.textContent = '材料 ' + dish.ingredients.length + (view.openDish === dish.id ? ' ▲' : ' ▼');
+      open.appendChild(nm); open.appendChild(cnt);
+      open.addEventListener('click', function(){
+        view.openDish = (view.openDish === dish.id) ? null : dish.id;
+        render();
+      });
+      row.appendChild(open);
+      host.appendChild(row);
+      if (view.openDish === dish.id) host.appendChild(editor(dish));
+    });
+
+    // 毎週の定番
+    var sbox = document.getElementById('stapleBox');
+    sbox.textContent = '';
+    var wrap = document.createElement('div');
+    wrap.className = 'editor';
+    var head = document.createElement('div');
+    head.className = 'inghead';
+    ['品名','数量','単位',''].forEach(function(t){ var s=document.createElement('span'); s.textContent=t; head.appendChild(s); });
+    wrap.appendChild(head);
+    state.staples.forEach(function(s, idx){
+      wrap.appendChild(ingRow(s, function(){
+        snapshot();
+        state.staples.splice(idx,1);
+        save(); render(); toast('定番から外しました');
+      }));
+    });
+    var addS = document.createElement('button');
+    addS.type='button'; addS.className='ghost'; addS.textContent='＋ 定番を追加';
+    addS.addEventListener('click', function(){
+      state.staples.push(i('', 1, '個')); save(); render();
+    });
+    wrap.appendChild(addS);
+    sbox.appendChild(wrap);
+  }
+
+  function editor(dish){
+    var wrap = document.createElement('div');
+    wrap.className = 'editor';
+
+    var nameF = document.createElement('input');
+    nameF.className='namefield'; nameF.type='text'; nameF.value = dish.name;
+    nameF.setAttribute('aria-label','料理名');
+    nameF.addEventListener('input', function(){ dish.name = nameF.value; save(); });
+    wrap.appendChild(nameF);
+
+    var head = document.createElement('div');
+    head.className='inghead';
+    ['材料','数量','単位',''].forEach(function(t){ var s=document.createElement('span'); s.textContent=t; head.appendChild(s); });
+    wrap.appendChild(head);
+
+    dish.ingredients.forEach(function(ing, idx){
+      wrap.appendChild(ingRow(ing, function(){
+        snapshot();
+        dish.ingredients.splice(idx,1);
+        save(); render(); toast('材料を消しました');
+      }));
+    });
+
+    var bar = document.createElement('div'); bar.className='editrow';
+    var addI = document.createElement('button');
+    addI.type='button'; addI.className='ghost'; addI.textContent='＋ 材料を追加';
+    addI.addEventListener('click', function(){
+      dish.ingredients.push(i('', 1, '個')); save(); render();
+    });
+    var delD = document.createElement('button');
+    delD.type='button'; delD.className='ghost danger'; delD.textContent='このレシピを消す';
+    delD.addEventListener('click', function(){
+      snapshot();
+      state.dishes = state.dishes.filter(function(x){ return x.id !== dish.id; });
+      view.openDish = null;
+      save(); render(); toast('「' + dish.name + '」を消しました');
+    });
+    bar.appendChild(addI); bar.appendChild(delD);
+    wrap.appendChild(bar);
+    return wrap;
+  }
+
+  function ingRow(ing, onDelete){
+    var row = document.createElement('div');
+    row.className = 'ingrow';
+
+    var n = document.createElement('input');
+    n.type='text'; n.value = ing.name; n.placeholder='材料名'; n.setAttribute('aria-label','材料名');
+    n.addEventListener('input', function(){ ing.name = n.value; save(); });
+
+    var q = document.createElement('input');
+    q.type='number'; q.step='any'; q.min='0';
+    q.value = (ing.qty === null || ing.qty === undefined) ? '' : ing.qty;
+    q.placeholder='適量'; q.setAttribute('aria-label','数量');
+    q.addEventListener('input', function(){
+      ing.qty = q.value === '' ? null : parseFloat(q.value);
+      if (isNaN(ing.qty)) ing.qty = null;
+      save();
+    });
+
+    var u = document.createElement('input');
+    u.type='text'; u.value = ing.unit || ''; u.placeholder='－'; u.setAttribute('aria-label','単位');
+    u.addEventListener('input', function(){ ing.unit = u.value; save(); });
+
+    var del = document.createElement('button');
+    del.type='button'; del.className='del'; del.textContent='✕';
+    del.setAttribute('aria-label','この行を消す');
+    del.addEventListener('click', onDelete);
+
+    row.appendChild(n); row.appendChild(q); row.appendChild(u); row.appendChild(del);
+    return row;
+  }
+
+  // ================= 操作 =================
+  function openSheet(dayIndex){
+    pickTarget = key(addDays(view.week, dayIndex));
+    var list = document.getElementById('sheetList');
+    list.textContent = '';
+    if (!state.dishes.length){
+      var p = document.createElement('div');
+      p.className='empty';
+      p.textContent = 'レシピがまだありません。「レシピ」タブで登録してください。';
+      list.appendChild(p);
+    }
+    state.dishes.forEach(function(dish){
+      var b = document.createElement('button');
+      b.type='button'; b.textContent = dish.name;
+      b.addEventListener('click', function(){ addToDay(pickTarget, dish.id); closeSheet(); });
+      list.appendChild(b);
+    });
+    var dt = addDays(view.week, dayIndex);
+    document.getElementById('sheetTitle').textContent = md(dt) + '(' + WD[dt.getDay()] + ') につくる料理';
+    document.getElementById('sheet').hidden = false;
+    document.getElementById('sheetBg').hidden = false;
+  }
+  function closeSheet(){
+    document.getElementById('sheet').hidden = true;
+    document.getElementById('sheetBg').hidden = true;
+  }
+
+  // ---------- 設定 ----------
+  function openSettings(){
+    renderSettings();
+    document.getElementById('setSheet').hidden = false;
+    document.getElementById('setBg').hidden = false;
+  }
+  function closeSettings(){
+    document.getElementById('setSheet').hidden = true;
+    document.getElementById('setBg').hidden = true;
+  }
+  function renderSettings(){
+    var sd = startDay();
+    var e = addDays(weekStartOf(new Date()), 6);
+    document.getElementById('setHelp').textContent =
+      'いまは ' + WD[sd] + '曜 から ' + WD[e.getDay()] + '曜 までの7日間です';
+
+    var host = document.getElementById('wdPick');
+    host.textContent = '';
+    for (var n = 0; n < 7; n++){
+      (function(n){
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = WD[n];
+        b.setAttribute('aria-pressed', n === sd ? 'true' : 'false');
+        b.setAttribute('aria-label', WD[n] + '曜はじまりにする');
+        b.addEventListener('click', function(){ setWeekStart(n); });
+        host.appendChild(b);
+      })(n);
+    }
+  }
+  function setWeekStart(dayNum){
+    if (dayNum === startDay()) return;
+    state.settings.weekStartDay = dayNum;
+    view.week = weekStartOf(new Date());   // 区切りが変わるので今週に戻す
+    save();
+    renderSettings();
+    render();
+    toast(WD[dayNum] + '曜はじまりにしました', true);
+  }
+
+  function addToDay(dateKey, dishId){
+    if (!state.plansByDate[dateKey]) state.plansByDate[dateKey] = [];
+    state.plansByDate[dateKey].push(dishId);
+    save(); render();
+  }
+  function removeFromDay(dateKey, idx){
+    var arr = state.plansByDate[dateKey];
+    if (!arr) return;
+    arr.splice(idx,1);
+    if (!arr.length) delete state.plansByDate[dateKey];
+    save(); render();
+  }
+
+  function toggleCheck(k){
+    if (!state.checked[view.week]) state.checked[view.week] = {};
+    var c = state.checked[view.week];
+    if (c[k]) delete c[k]; else c[k] = true;
+    save(); render();
+  }
+
+  function skipItem(it){
+    snapshot();
+    if (it.extraId){
+      state.extras[view.week] = (state.extras[view.week]||[]).filter(function(e){ return e.id !== it.extraId; });
+    } else {
+      if (!state.skipped[view.week]) state.skipped[view.week] = {};
+      state.skipped[view.week][it.key] = true;
+    }
+    save(); render();
+    toast('「' + it.name + '」を今週のリストから外しました');
+  }
+
+  function clearWeek(){
+    var keys = [], any = false;
+    for (var n = 0; n < 7; n++){
+      var dk = key(addDays(view.week, n));
+      keys.push(dk);
+      if (state.plansByDate[dk] && state.plansByDate[dk].length) any = true;
+    }
+    if (!any){ toast('この週の献立はまだ空です', true); return; }
+    snapshot();
+    keys.forEach(function(dk){ delete state.plansByDate[dk]; });
+    delete state.skipped[view.week];
+    save(); render();
+    toast('この週の献立を空にしました');
+  }
+  function uncheckAll(){
+    snapshot();
+    delete state.checked[view.week];
+    save(); render();
+    toast('チェックをはずしました');
+  }
+
+  // ---------- トースト ----------
+  function toast(msg, noUndo){
+    document.getElementById('toastMsg').textContent = msg;
+    document.getElementById('undoBtn').hidden = !!noUndo;
+    document.getElementById('toast').hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(hideToast, 6000);
+  }
+  function hideToast(){ document.getElementById('toast').hidden = true; }
+
+  // ---------- バックアップ ----------
+  async function exportJSON(){
+    var stamp = key(new Date());
+    var filename = 'kondate-' + stamp + '.json';
+    var text = JSON.stringify(state, null, 2);
+    var dl = null;
+    try{
+      if (window.claude && typeof window.claude.use === 'function') dl = await window.claude.use('downloads');
+    }catch(e){ dl = null; }
+    if (dl){
+      try{ await dl.save({ filename: filename, data: text }); toast('書き出しました', true); }
+      catch(err){ if (!err || err.code !== 'declined') toast('書き出せませんでした', true); }
+      return;
+    }
+    var blob = new Blob([text], { type:'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(a.href);
+    toast('書き出しました', true);
+  }
+  function importJSON(file){
+    var r = new FileReader();
+    r.onload = function(){
+      try{
+        var data = JSON.parse(r.result);
+        if (!data || !Array.isArray(data.dishes)) throw new Error('bad');
+        snapshot();
+        state = data;
+        state.plans = state.plans||{}; state.extras = state.extras||{};
+        state.checked = state.checked||{}; state.skipped = state.skipped||{};
+        state.staples = state.staples||[];
+        save(); render(); toast('読み込みました');
+      }catch(e){
+        toast('読み込めませんでした。書き出したJSONを選んでください', true);
+      }
+    };
+    r.onerror = function(){ toast('ファイルを開けませんでした', true); };
+    r.readAsText(file);
+  }
+
+  // ================= イベント =================
+  Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function(b){
+    b.addEventListener('click', function(){ view.tab = b.dataset.tab; render(); });
+  });
+  function shiftWeek(n){
+    view.week = key(addDays(view.week, n*7));
+    render();
+  }
+  document.getElementById('prevWeek').addEventListener('click', function(){ shiftWeek(-1); });
+  document.getElementById('nextWeek').addEventListener('click', function(){ shiftWeek(1); });
+  document.getElementById('prevWeek2').addEventListener('click', function(){ shiftWeek(-1); });
+  document.getElementById('nextWeek2').addEventListener('click', function(){ shiftWeek(1); });
+
+  document.getElementById('sheetClose').addEventListener('click', closeSheet);
+  document.getElementById('sheetBg').addEventListener('click', closeSheet);
+  document.getElementById('setClose').addEventListener('click', closeSettings);
+  document.getElementById('setBg').addEventListener('click', closeSettings);
+
+  document.getElementById('addDish').addEventListener('click', function(){
+    var nd = d('新しい料理', [i('', 1, '個')]);
+    state.dishes.push(nd);
+    view.openDish = nd.id;
+    save(); render();
+  });
+
+  document.getElementById('addForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var inp = document.getElementById('extraInput');
+    var v = inp.value.trim();
+    if (!v) return;
+    if (!state.extras[view.week]) state.extras[view.week] = [];
+    state.extras[view.week].push({ id: uid(), name: v });
+    inp.value = ''; inp.focus();
+    save(); render();
+  });
+
+  var menu = document.getElementById('menu'), scrim = document.getElementById('scrim'),
+      menuBtn = document.getElementById('menuBtn');
+  function setMenu(open){
+    menu.hidden = !open; scrim.hidden = !open;
+    menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  menuBtn.addEventListener('click', function(){ setMenu(menu.hidden); });
+  scrim.addEventListener('click', function(){ setMenu(false); });
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape'){ setMenu(false); closeSheet(); closeSettings(); }
+  });
+  menu.addEventListener('click', function(e){
+    var act = e.target && e.target.dataset ? e.target.dataset.act : null;
+    if (!act) return;
+    setMenu(false);
+    if (act === 'settings') openSettings();
+    if (act === 'clearWeek') clearWeek();
+    if (act === 'uncheckAll') uncheckAll();
+    if (act === 'export') exportJSON();
+    if (act === 'import') document.getElementById('fileInput').click();
+  });
+  document.getElementById('fileInput').addEventListener('change', function(e){
+    if (e.target.files && e.target.files[0]) importJSON(e.target.files[0]);
+    e.target.value = '';
+  });
+  document.getElementById('undoBtn').addEventListener('click', undo);
+
+  render();
+})();
+</script>
+
+</html>
