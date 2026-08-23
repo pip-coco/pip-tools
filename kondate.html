@@ -118,6 +118,29 @@
     padding:13px 16px;border-bottom:1px solid var(--line);
   }
   .pantryinfo{font-size:.88rem;color:var(--muted);}
+  /* 常備品の編集行（2段組み） */
+  .pedit{
+    display:flex;flex-direction:column;gap:6px;
+    padding:10px 0 12px;border-bottom:1px solid var(--line);
+  }
+  .pedit .r1{display:grid;grid-template-columns:1fr 40px;gap:6px;align-items:center;}
+  .pedit .r2{display:grid;grid-template-columns:1fr 58px 52px;gap:6px;align-items:center;}
+  .pedit input,.pedit select{
+    font:inherit;font-size:.92rem;height:42px;min-width:0;
+    padding:0 9px;
+    border:1px solid var(--line-strong);border-radius:5px;
+    background:var(--surface);color:var(--fg);
+  }
+  .pedit select{padding-right:4px;}
+  .pedit input:focus,.pedit select:focus{outline:2px solid var(--accent);outline-offset:-1px;}
+  .pedit input[type="number"]{text-align:right;font-family:"IBM Plex Mono",monospace;}
+  .pedit .del{
+    height:42px;border:0;border-radius:5px;
+    background:transparent;color:var(--line-strong);
+    font-size:.9rem;cursor:pointer;
+  }
+  .pedit .del:hover{color:var(--fg);background:var(--line);}
+  .pedit .del:focus-visible{outline:2px solid var(--accent);}
   .pantryinfo.warn{color:var(--accent);font-weight:700;}
   .statepill{
     flex:none;margin-right:14px;
@@ -794,6 +817,7 @@
     <!-- ============ 常備品 ============ -->
     <div class="pane" id="pane-pantry" hidden>
       <div class="panetools" id="pantryTools"></div>
+      <div class="filters" id="pantryFilters"></div>
       <div id="pantryList"></div>
     </div>
   </main>
@@ -861,6 +885,8 @@
   var KEY = 'kondate.v1';
   var WD = ['日','月','火','水','木','金','土'];
   var CATS = ['主食','主菜','副菜','汁物','デザート','その他'];
+  // 常備品は「置き場所」で分ける（棚の前で確認しやすいように）
+  var PCATS = ['調味料','粉・乾物','冷蔵・冷凍','缶詰・ストック','日用品','その他'];
 
   // ---------- 初期データ（4人分＝大人2＋子ども2 を想定。画面から直せます） ----------
   function seed(){
@@ -886,19 +912,26 @@
 
   // 家に置いてある調味料・常備食材。out=true が「切らした（買う）」
   function seedPantry(){
+    var C='調味料', K='粉・乾物', R='冷蔵・冷凍', S='缶詰・ストック', N='日用品';
     return [
-      pt('しょうゆ',1,'本'), pt('みりん',1,'本'), pt('料理酒',1,'本'),
-      pt('砂糖',1,'袋'), pt('塩',1,'袋'), pt('こしょう',1,'個'),
-      pt('味噌',1,'パック'), pt('サラダ油',1,'本'), pt('ごま油',1,'本'),
-      pt('オリーブオイル',1,'本'), pt('酢',1,'本'), pt('マヨネーズ',1,'本'),
-      pt('ケチャップ',1,'本'), pt('中濃ソース',1,'本'), pt('めんつゆ',1,'本'),
-      pt('だしパック',1,'袋'), pt('小麦粉',1,'袋'), pt('片栗粉',1,'袋'),
-      pt('パン粉',1,'袋'), pt('焼きのり',1,'袋')
+      pt('しょうゆ',1,'本',C), pt('みりん',1,'本',C), pt('料理酒',1,'本',C),
+      pt('砂糖',1,'袋',C), pt('塩',1,'袋',C), pt('こしょう',1,'個',C),
+      pt('サラダ油',1,'本',C), pt('ごま油',1,'本',C), pt('オリーブオイル',1,'本',C),
+      pt('酢',1,'本',C), pt('中濃ソース',1,'本',C), pt('めんつゆ',1,'本',C),
+      pt('だしパック',1,'袋',C),
+      pt('小麦粉',1,'袋',K), pt('片栗粉',1,'袋',K), pt('パン粉',1,'袋',K),
+      pt('焼きのり',1,'袋',K),
+      pt('味噌',1,'パック',R), pt('マヨネーズ',1,'本',R), pt('ケチャップ',1,'本',R),
+      pt('バター',1,'個',R),
+      pt('トマト缶',1,'缶',S), pt('ツナ缶',1,'缶',S), pt('カレールー',1,'箱',S),
+      pt('トイレットペーパー',1,'パック',N), pt('キッチンペーパー',1,'パック',N),
+      pt('ラップ',1,'本',N), pt('食器用洗剤',1,'本',N), pt('ゴミ袋',1,'袋',N)
     ];
   }
-  function pt(name, qty, unit){
+  function pt(name, qty, unit, cat){
     var o = i(name, qty, unit);
     o.out = false;
+    o.cat = cat || 'その他';
     return o;
   }
   function uid(){ return Math.random().toString(36).slice(2,9); }
@@ -915,7 +948,7 @@
   // ---------- 保存・読み込み ----------
   var state = load();
   var view = { tab:'shop', prevTab:'shop', week: weekStartOf(new Date()),
-               openDish:null, dishFilter:'all', pantryEdit:false };
+               openDish:null, dishFilter:'all', pantryEdit:false, pantryFilter:'all' };
   var undoSnap = null, toastTimer = null;
   var pickTarget = null, pickDate = null, pickCat = null, qtyItem = null;
 
@@ -937,6 +970,12 @@
     raw.staples = raw.staples || [];
     // 常備品はあとから足した機能なので、無ければ初期セットを入れる
     if (!Array.isArray(raw.pantry)) raw.pantry = seedPantry();
+    // 分類が無い常備品に分類を付ける
+    var seedCat = {};
+    seedPantry().forEach(function(s){ seedCat[s.name] = s.cat; });
+    raw.pantry.forEach(function(p){
+      if (PCATS.indexOf(p.cat) < 0) p.cat = seedCat[p.name] || 'その他';
+    });
     raw.settings = raw.settings || {};
     if (typeof raw.settings.weekStartDay !== 'number') raw.settings.weekStartDay = 3;
 
@@ -1078,11 +1117,23 @@
       // 献立に出てくるものは「献立の材料」側にまとめる（定番と二重に出さない）
       plan: merged.filter(function(x){ return x.fromPlan; }).filter(shown),
       staples: merged.filter(function(x){ return !x.fromPlan && x.fromStaple; }).filter(shown),
-      pantry: merged.filter(function(x){ return !x.fromPlan && !x.fromStaple && x.fromPantry; }).filter(shown),
+      // 買い物リストでも置き場所の順に並べる
+      pantry: merged.filter(function(x){ return !x.fromPlan && !x.fromStaple && x.fromPantry; })
+                    .filter(shown)
+                    .sort(function(a, b){ return pcatIndex(a) - pcatIndex(b); }),
       extras: extraAll.filter(shown),
       // 今週だけ外したもの。買い物リストの一番下から戻せる。
       hidden: merged.concat(extraAll).filter(hidden)
     };
+  }
+
+  // 買い物リストの常備品を、置き場所の順に並べるための番号
+  function pcatIndex(entry){
+    var id = (entry.pantryIds || [])[0];
+    var found = null;
+    state.pantry.forEach(function(p){ if (!found && p.id === id) found = p; });
+    var n = found ? PCATS.indexOf(found.cat) : -1;
+    return n < 0 ? PCATS.length : n;
   }
 
   function findDish(id){
@@ -1503,6 +1554,10 @@
   }
 
   // ================= 常備品 =================
+  function pantryCount(cat){
+    return state.pantry.filter(function(p){ return !p.deleted && p.cat === cat; }).length;
+  }
+
   function renderPantry(){
     var live = state.pantry.filter(function(p){ return !p.deleted; });
     var outN = live.filter(function(p){ return p.out; }).length;
@@ -1519,28 +1574,45 @@
     eb.addEventListener('click', function(){ view.pantryEdit = !view.pantryEdit; render(); });
     tools.appendChild(eb);
 
+    // 分類のしぼりこみ（中身が無い分類は出さない）
+    var fhost = document.getElementById('pantryFilters');
+    fhost.textContent = '';
+    if (PCATS.indexOf(view.pantryFilter) >= 0 && !pantryCount(view.pantryFilter)){
+      view.pantryFilter = 'all';
+    }
+    var opts = [{ key:'all', label:'すべて', n: live.length }];
+    PCATS.forEach(function(c){
+      var n = pantryCount(c);
+      if (n) opts.push({ key:c, label:c, n:n });
+    });
+    opts.forEach(function(o){
+      var b = document.createElement('button');
+      b.type='button';
+      var lb = document.createElement('span'); lb.textContent = o.label;
+      var nb = document.createElement('span'); nb.className='fn'; nb.textContent = o.n;
+      b.appendChild(lb); b.appendChild(nb);
+      b.setAttribute('aria-label', o.label + ' ' + o.n + '品');
+      b.setAttribute('aria-pressed', view.pantryFilter === o.key ? 'true' : 'false');
+      b.addEventListener('click', function(){ view.pantryFilter = o.key; render(); });
+      fhost.appendChild(b);
+    });
+
+    var showing = (view.pantryFilter === 'all')
+      ? live
+      : live.filter(function(p){ return p.cat === view.pantryFilter; });
+
     var host = document.getElementById('pantryList');
     host.textContent = '';
 
     if (view.pantryEdit){
       var wrap = document.createElement('div');
       wrap.className = 'editor';
-      var head = document.createElement('div');
-      head.className = 'inghead';
-      ['品名','数量','単位',''].forEach(function(t){
-        var s=document.createElement('span'); s.textContent=t; head.appendChild(s);
-      });
-      wrap.appendChild(head);
-      live.forEach(function(p){
-        wrap.appendChild(ingRow(p, function(){
-          snapshot(); p.deleted = true; save(); render();
-          toast('「' + (p.name || 'この行') + '」を常備品から外しました');
-        }));
-      });
+      showing.forEach(function(p){ wrap.appendChild(pantryEditRow(p)); });
       var add = document.createElement('button');
       add.type='button'; add.className='ghost'; add.textContent='＋ 常備品を追加';
       add.addEventListener('click', function(){
-        state.pantry.push(pt('', 1, '本')); save(); render();
+        var cat = (view.pantryFilter !== 'all') ? view.pantryFilter : '調味料';
+        state.pantry.push(pt('', 1, '本', cat)); save(); render();
       });
       wrap.appendChild(add);
       host.appendChild(wrap);
@@ -1549,15 +1621,84 @@
       return;
     }
 
-    if (!live.length){
+    if (!showing.length){
       var em = document.createElement('div');
       em.className = 'empty';
-      em.innerHTML = '<span class="mark">○</span>常備品がありません。<br>「編集」から追加できます。';
+      em.innerHTML = '<span class="mark">○</span>この分類には何もありません。<br>「編集」から追加できます。';
       host.appendChild(em);
       return;
     }
 
-    live.forEach(function(p){
+    // 「すべて」のときは置き場所ごとに見出しを付ける
+    if (view.pantryFilter === 'all'){
+      PCATS.forEach(function(cat){
+        var group = live.filter(function(p){ return p.cat === cat; });
+        if (!group.length) return;
+        var h = document.createElement('h2');
+        h.className = 'seclabel';
+        var t = document.createElement('span'); t.textContent = cat;
+        var outn = group.filter(function(p){ return p.out; }).length;
+        var n = document.createElement('span'); n.className='n';
+        n.textContent = outn ? (outn + '品 切らした') : (group.length + '品');
+        h.appendChild(t); h.appendChild(n);
+        host.appendChild(h);
+        group.forEach(function(p){ pantryRow(host, p); });
+      });
+      return;
+    }
+    showing.forEach(function(p){ pantryRow(host, p); });
+  }
+
+  // 編集モードの1行：名前＋✕／分類・数量・単位
+  function pantryEditRow(p){
+    var box = document.createElement('div');
+    box.className = 'pedit';
+
+    var r1 = document.createElement('div'); r1.className = 'r1';
+    var n = document.createElement('input');
+    n.type='text'; n.value = p.name; n.placeholder='品名'; n.setAttribute('aria-label','品名');
+    n.addEventListener('input', function(){ p.name = n.value; save(); });
+    var del = document.createElement('button');
+    del.type='button'; del.className='del'; del.textContent='✕';
+    del.setAttribute('aria-label','この行を消す');
+    del.addEventListener('click', function(){
+      snapshot(); p.deleted = true; save(); render();
+      toast('「' + (p.name || 'この行') + '」を常備品から外しました');
+    });
+    r1.appendChild(n); r1.appendChild(del);
+
+    var r2 = document.createElement('div'); r2.className = 'r2';
+    var sel = document.createElement('select');
+    sel.setAttribute('aria-label','置き場所');
+    PCATS.forEach(function(c){
+      var o = document.createElement('option');
+      o.value = c; o.textContent = c;
+      if (p.cat === c) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.addEventListener('change', function(){ p.cat = sel.value; save(); render(); });
+
+    var q = document.createElement('input');
+    q.type='number'; q.step='any'; q.min='0';
+    q.value = (p.qty === null || p.qty === undefined) ? '' : p.qty;
+    q.placeholder='適量'; q.setAttribute('aria-label','数量');
+    q.addEventListener('input', function(){
+      p.qty = q.value === '' ? null : parseFloat(q.value);
+      if (isNaN(p.qty)) p.qty = null;
+      save();
+    });
+
+    var u = document.createElement('input');
+    u.type='text'; u.value = p.unit || ''; u.placeholder='－'; u.setAttribute('aria-label','単位');
+    u.addEventListener('input', function(){ p.unit = u.value; save(); });
+
+    r2.appendChild(sel); r2.appendChild(q); r2.appendChild(u);
+    box.appendChild(r1); box.appendChild(r2);
+    return box;
+  }
+
+  function pantryRow(host, p){
+    (function(){
       var row = document.createElement('div');
       row.className = 'row pantryrow' + (p.out ? ' isout' : '');
       var btn = document.createElement('button');
@@ -1587,7 +1728,7 @@
       });
       row.appendChild(btn);
       host.appendChild(row);
-    });
+    })();
   }
 
   // 「消した◯◯」の復元欄（定番と常備品で共用）
