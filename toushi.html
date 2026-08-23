@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>投資ボード</title>
+<style>
+/* ===== 色の定義（ダークモードは下でまとめて差し替える） ===== */
+:root{
+  --bg:#ffffff; --card:#f6f7f9; --fg:#16181d; --muted:#6b7280;
+  --line:#e3e6ea; --accent:#2563eb;
+  --hot:#d92626; --warm:#e07a1f; --mid:#8b8f96; --cool:#0e8fa8; --cold:#2563eb;
+  --up:#c62828; --down:#1565c0;   /* 日本式：上げ=赤 下げ=青 */
+  --shadow:0 1px 2px rgba(0,0,0,.06);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#131417; --card:#1d1f24; --fg:#e9eaec; --muted:#9aa0aa;
+    --line:#31343b; --accent:#6ea8fe;
+    --hot:#ff6b6b; --warm:#ffa657; --mid:#9aa0aa; --cool:#4dd0e1; --cold:#6ea8fe;
+    --up:#ff7b72; --down:#79b8ff;
+    --shadow:none;
+  }
+}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--fg);
+  font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Sans",
+       "Noto Sans JP","Yu Gothic UI",sans-serif;
+  padding:0 0 72px; overflow-x:hidden;
+}
+.wrap{max-width:720px;margin:0 auto;padding:0 14px}
+
+/* ===== ヘッダー ===== */
+header{
+  position:sticky; top:0; z-index:10; background:var(--bg);
+  border-bottom:1px solid var(--line); padding-top:env(safe-area-inset-top);
+}
+.hbar{display:flex;align-items:center;gap:10px;padding:10px 0;max-width:720px;margin:0 auto;padding-left:14px;padding-right:14px}
+h1{font-size:18px;margin:0;font-weight:700;letter-spacing:.02em}
+.stamp{font-size:12px;color:var(--muted);margin-left:auto;text-align:right;line-height:1.3}
+.iconbtn{
+  min-width:44px;min-height:44px;border:1px solid var(--line);background:var(--card);
+  color:var(--fg);border-radius:10px;font-size:18px;cursor:pointer;
+}
+.iconbtn:active{opacity:.6}
+
+/* ===== 総合サマリー ===== */
+.summary{
+  margin:14px 0; padding:14px; border-radius:14px;
+  background:var(--card); border:1px solid var(--line); box-shadow:var(--shadow);
+}
+.summary h2{margin:0 0 8px;font-size:13px;color:var(--muted);font-weight:600;letter-spacing:.05em}
+.verdict{font-size:19px;font-weight:700;line-height:1.4}
+.verdict .n{font-variant-numeric:tabular-nums}
+.summary p{margin:8px 0 0;font-size:13px;color:var(--muted);line-height:1.6}
+
+/* ===== セクション ===== */
+section{margin:22px 0 0}
+section > h2{
+  font-size:13px;color:var(--muted);font-weight:600;letter-spacing:.06em;
+  margin:0 0 8px; display:flex; align-items:baseline; gap:8px;
+}
+section > h2 span{font-size:11px;font-weight:400;letter-spacing:0}
+
+/* ===== カード ===== */
+.card{
+  background:var(--card); border:1px solid var(--line); border-radius:14px;
+  margin-bottom:10px; overflow:hidden; box-shadow:var(--shadow);
+}
+.head{
+  display:grid; grid-template-columns:1fr auto; gap:4px 10px;
+  align-items:center; padding:12px 14px; min-height:44px; cursor:pointer;
+}
+.head:active{background:rgba(128,128,128,.08)}
+.name{font-size:14px;color:var(--muted);grid-column:1;grid-row:1}
+.badge{
+  grid-column:2;grid-row:1; justify-self:end;
+  font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;
+  border:1px solid currentColor; white-space:nowrap;
+}
+.val{
+  grid-column:1;grid-row:2; font-size:26px;font-weight:700;
+  font-variant-numeric:tabular-nums; letter-spacing:-.01em;
+}
+.val .u{font-size:13px;font-weight:500;color:var(--muted);margin-left:3px}
+.chg{
+  grid-column:2;grid-row:2; justify-self:end; font-size:14px;
+  font-variant-numeric:tabular-nums; font-weight:600;
+}
+.chg.up{color:var(--up)} .chg.down{color:var(--down)} .chg.flat{color:var(--muted)}
+
+/* ===== 20年レンジの位置バー ===== */
+.range{padding:0 14px 12px}
+.track{
+  position:relative; height:8px; border-radius:999px; overflow:visible;
+  background:linear-gradient(90deg,var(--cold),var(--cool),var(--mid),var(--warm),var(--hot));
+}
+.track.rev{background:linear-gradient(90deg,var(--hot),var(--warm),var(--mid),var(--cool),var(--cold))}
+.track.flat{background:var(--line)}
+.pin{
+  position:absolute; top:50%; width:14px; height:14px; margin:-7px 0 0 -7px;
+  border-radius:50%; background:var(--bg); border:3px solid var(--fg);
+}
+.ends{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--muted);margin-top:7px;font-variant-numeric:tabular-nums}
+.ends .mid{font-weight:600;color:var(--fg)}
+/* 展開できることを示す小さな印 */
+.caret{grid-column:2;grid-row:1;justify-self:end;color:var(--muted);font-size:12px;transition:transform .15s}
+.card.open .caret{transform:rotate(180deg)}
+
+/* ===== 展開部（チャート） ===== */
+.detail{display:none;padding:0 14px 14px;border-top:1px solid var(--line);margin-top:2px}
+.card.open .detail{display:block}
+.chart{width:100%;height:130px;display:block;margin-top:10px}
+.chart .ln{fill:none;stroke:var(--accent);stroke-width:1.6;stroke-linejoin:round}
+.chart .ar{fill:var(--accent);opacity:.10}
+.chart .dot{fill:var(--accent)}
+.chart .gl{stroke:var(--line);stroke-width:1}
+.chart text{fill:var(--muted);font-size:10px}
+.meta{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.6}
+.meta b{color:var(--fg);font-weight:600}
+
+/* ===== メモ ===== */
+textarea{
+  width:100%;min-height:120px;padding:12px;border-radius:12px;
+  border:1px solid var(--line);background:var(--card);color:var(--fg);
+  font:16px/1.6 inherit;resize:vertical;
+}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.btn{
+  min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--line);
+  background:var(--card);color:var(--fg);font-size:15px;font-weight:600;cursor:pointer;
+}
+.btn:active{opacity:.6}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* ===== 状態表示 ===== */
+.state{padding:40px 14px;text-align:center;color:var(--muted);font-size:15px;line-height:1.8}
+.notes{
+  margin-top:16px;padding:12px 14px;border-radius:12px;
+  background:var(--card);border:1px solid var(--line);
+  font-size:12px;color:var(--muted);line-height:1.7;
+}
+footer{margin-top:26px;padding-top:14px;border-top:1px solid var(--line);
+  font-size:12px;color:var(--muted);line-height:1.7}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hbar">
+    <h1>投資ボード</h1>
+    <div class="stamp" id="stamp">読み込み中…</div>
+    <button class="iconbtn" id="reload" title="再読み込み" aria-label="再読み込み">⟳</button>
+  </div>
+</header>
+
+<div class="wrap" id="app">
+  <div class="state">データを読み込んでいます…</div>
+</div>
+
+<script>
+"use strict";
+
+/* =========================================================================
+   投資ボード
+   data/toushi.json（GitHub Actions が毎朝更新）を読んで表示するだけの画面。
+   ここには自分の保有情報は一切持たない。メモだけ端末内に保存する。
+   ========================================================================= */
+
+const KEY = "toushi.v1";          // localStorage のキー
+var DATA = null;                  // 読み込んだデータ
+var OPEN = {};                    // どのカードを開いているか
+
+/* ---------- localStorage（壊れていても落とさない） ---------- */
+function loadLocal(){
+  try{ return JSON.parse(localStorage.getItem(KEY)) || {memo:"", open:{}}; }
+  catch(e){ return {memo:"", open:{}}; }
+}
+function saveLocal(o){
+  try{ localStorage.setItem(KEY, JSON.stringify(o)); }catch(e){}
+}
+var LOCAL = loadLocal();
+OPEN = LOCAL.open || {};
+
+/* ---------- 数値の整形 ---------- */
+function fmt(v, unit){
+  if(v === null || v === undefined || isNaN(v)) return "—";
+  var d = 2;
+  if(unit === "oz") d = 4;
+  else if(Math.abs(v) >= 1000) d = 0;
+  else if(Math.abs(v) >= 100) d = 1;
+  return v.toLocaleString("ja-JP", {minimumFractionDigits:d, maximumFractionDigits:d});
+}
+
+/* ---------- 系列から「値のある点」だけ取り出す ---------- */
+function points(key){
+  var vals = DATA.series[key] || [], out = [];
+  for(var i=0;i<vals.length;i++){
+    if(vals[i] !== null && vals[i] !== undefined){
+      out.push({d: DATA.dates[i], v: vals[i]});
+    }
+  }
+  return out;
+}
+
+/* ---------- 20年レンジの中での位置（パーセンタイル） ---------- */
+function percentile(pts){
+  if(pts.length < 12) return null;                 // 履歴が短いうちは判定しない
+  var cur = pts[pts.length-1].v;
+  var below = 0;
+  for(var i=0;i<pts.length;i++) if(pts[i].v < cur) below++;
+  return below / (pts.length - 1) * 100;
+}
+
+/* ---------- パーセンタイルを言葉と色に変える ----------
+   expensiveHigh が true  : 値が高いほど割高
+                   false : 値が高いほど割安（イールドスプレッド）
+                   null  : 判定しない（水準を見るだけ）                    */
+function judge(pct, expensiveHigh){
+  if(pct === null || expensiveHigh === null || expensiveHigh === undefined) return null;
+  var p = expensiveHigh ? pct : 100 - pct;         // 「割高度」に揃える
+  if(p >= 85) return {t:"割高",     c:"var(--hot)"};
+  if(p >= 65) return {t:"やや割高", c:"var(--warm)"};
+  if(p >= 35) return {t:"中立",     c:"var(--mid)"};
+  if(p >= 15) return {t:"やや割安", c:"var(--cool)"};
+  return           {t:"割安",     c:"var(--cold)"};
+}
+
+/* ---------- 直近の変化（1つ前の点との差） ---------- */
+function change(pts){
+  if(pts.length < 2) return null;
+  var a = pts[pts.length-2].v, b = pts[pts.length-1].v;
+  if(!a) return null;
+  return (b - a) / Math.abs(a) * 100;
+}
+
+/* ---------- 20年チャート（SVGを手で組み立てる） ---------- */
+function chartSVG(pts){
+  if(pts.length < 2) return '<div class="meta">履歴がまだありません。</div>';
+  var W = 300, H = 110, PADL = 4, PADR = 4, PADT = 8, PADB = 16;
+  var lo = Infinity, hi = -Infinity;
+  for(var i=0;i<pts.length;i++){ lo = Math.min(lo, pts[i].v); hi = Math.max(hi, pts[i].v); }
+  if(hi === lo){ hi = lo + 1; }
+  var iw = W - PADL - PADR, ih = H - PADT - PADB;
+  var xs = function(i){ return PADL + iw * i / (pts.length - 1); };
+  var ys = function(v){ return PADT + ih * (1 - (v - lo) / (hi - lo)); };
+
+  var line = "", area = "M" + PADL + "," + (PADT + ih);
+  for(var j=0;j<pts.length;j++){
+    var x = xs(j).toFixed(1), y = ys(pts[j].v).toFixed(1);
+    line += (j ? "L" : "M") + x + "," + y;
+    area += "L" + x + "," + y;
+  }
+  area += "L" + (PADL + iw).toFixed(1) + "," + (PADT + ih) + "Z";
+
+  /* 横軸に5年おきくらいの年を置く */
+  var ticks = "", lastYear = "";
+  for(var k=0;k<pts.length;k++){
+    var yr = pts[k].d.slice(0,4);
+    if(yr !== lastYear && (yr % 5 === 0 || k === pts.length-1)){
+      lastYear = yr;
+      var tx = xs(k);
+      if(tx > 12 && tx < W - 12){
+        ticks += '<line class="gl" x1="'+tx.toFixed(1)+'" y1="'+PADT+'" x2="'+tx.toFixed(1)+'" y2="'+(PADT+ih)+'"/>'
+              +  '<text x="'+tx.toFixed(1)+'" y="'+(H-4)+'" text-anchor="middle">'+yr+'</text>';
+      }
+    }
+  }
+  var lx = xs(pts.length-1).toFixed(1), ly = ys(pts[pts.length-1].v).toFixed(1);
+  return '<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" aria-hidden="true">'
+       + ticks
+       + '<path class="ar" d="'+area+'"/>'
+       + '<path class="ln" d="'+line+'" vector-effect="non-scaling-stroke"/>'
+       + '<circle class="dot" cx="'+lx+'" cy="'+ly+'" r="2.6"/>'
+       + '</svg>';
+}
+
+/* ---------- カード1枚を作る ---------- */
+function cardHTML(key){
+  var m = DATA.meta[key];
+  var pts = points(key);
+  if(!pts.length){
+    return '<div class="card"><div class="head">'
+         + '<div class="name">'+m.label+'</div>'
+         + '<div class="val">—<span class="u"> 取得できず</span></div>'
+         + '</div></div>';
+  }
+  var cur = pts[pts.length-1].v;
+  var pct = percentile(pts);
+  var jd  = judge(pct, m.expensive_high);
+  var chg = change(pts);
+  var lo = pts[0].v, hi = pts[0].v;
+  for(var i=0;i<pts.length;i++){ lo = Math.min(lo,pts[i].v); hi = Math.max(hi,pts[i].v); }
+  var isOpen = !!OPEN[key];
+
+  var h = '<div class="card'+(isOpen?" open":"")+'" data-key="'+key+'">';
+
+  h += '<div class="head" role="button" tabindex="0">';
+  h +=   '<div class="name">'+m.label+'</div>';
+  if(jd) h += '<div class="badge" style="color:'+jd.c+'">'+jd.t+'</div>';
+  else   h += '<div class="caret">▾</div>';
+  h +=   '<div class="val">'+fmt(cur, m.unit)+'<span class="u">'+m.unit+'</span></div>';
+  if(chg !== null && Math.abs(chg) >= 0.005){
+    var cls = chg > 0 ? "up" : "down";
+    h += '<div class="chg '+cls+'">'+(chg>0?"+":"")+chg.toFixed(2)+'%</div>';
+  }else{
+    h += '<div class="chg flat">—</div>';
+  }
+  h += '</div>';
+
+  /* 20年レンジのどこにいるか */
+  if(pct !== null){
+    var trackCls = (m.expensive_high === null || m.expensive_high === undefined)
+                 ? "track flat" : (m.expensive_high ? "track" : "track rev");
+    /* まるい印が端で欠けないように、内側 7px ぶんを差し引いて置く */
+    var pinPos = 'calc(7px + (100% - 14px) * ' + (pct/100).toFixed(4) + ')';
+    h += '<div class="range">'
+      +    '<div class="'+trackCls+'"><div class="pin" style="left:'+pinPos+'"></div></div>'
+      +    '<div class="ends"><span>最安 '+fmt(lo,m.unit)+'</span>'
+      +      '<span class="mid">'+DATA.years+'年で下から '+Math.round(pct)+'%</span>'
+      +      '<span>最高 '+fmt(hi,m.unit)+'</span></div>'
+      +  '</div>';
+  }else{
+    h += '<div class="range"><div class="ends"><span>履歴がたまると、過去'+DATA.years+'年の中での位置が出ます</span></div></div>';
+  }
+
+  h += '<div class="detail">'
+    +    chartSVG(pts)
+    +    '<div class="meta"><b>出どころ</b> '+m.source
+    +      '　<b>時点</b> '+(DATA.asof[key] || "不明")+'</div>'
+    +  '</div>';
+
+  h += '</div>';
+  return h;
+}
+
+/* ---------- 総合サマリー ---------- */
+function summaryHTML(){
+  var keys = ["nikkei_per","nikkei_pbr","spx_per","cape","ys_jp","ys_us"];
+  var hot = 0, cold = 0, n = 0;
+  for(var i=0;i<keys.length;i++){
+    var m = DATA.meta[keys[i]];
+    var jd = judge(percentile(points(keys[i])), m.expensive_high);
+    if(!jd) continue;
+    n++;
+    if(jd.t.indexOf("割高") >= 0) hot++;
+    if(jd.t.indexOf("割安") >= 0) cold++;
+  }
+  var line, sub;
+  if(n === 0){
+    line = "判定はまだ出せません";
+    sub  = "過去の履歴がたまると、いまの水準が過去" + DATA.years + "年のどのあたりかを判定します。GitHub Actions が初めて動いたあとに表示されます。";
+  }else if(hot > cold){
+    line = '株式は<span style="color:var(--hot)">割高より</span>　<span class="n">'+hot+'</span>/'+n+' 指標';
+    sub  = "バリュエーション指標のうち " + hot + " 本が過去" + DATA.years + "年の上位に位置しています。";
+  }else if(cold > hot){
+    line = '株式は<span style="color:var(--cold)">割安より</span>　<span class="n">'+cold+'</span>/'+n+' 指標';
+    sub  = "バリュエーション指標のうち " + cold + " 本が過去" + DATA.years + "年の下位に位置しています。";
+  }else{
+    line = '株式は<span style="color:var(--mid)">中立</span>　<span class="n">'+n+'</span> 指標で拮抗';
+    sub  = "割高側と割安側の指標が同数です。";
+  }
+  return '<div class="summary"><h2>いまの見立て</h2>'
+       + '<div class="verdict">'+line+'</div><p>'+sub+'</p></div>';
+}
+
+/* ---------- 画面全体を組み立てる ---------- */
+function render(){
+  var groups = [
+    {g:"value",  t:"割安 / 割高",   note:"過去"+DATA.years+"年の中での位置"},
+    {g:"spread", t:"株 vs 債券",    note:"高いほど株が有利"},
+    {g:"rate",   t:"金利とインフレ", note:""},
+    {g:"ratio",  t:"比率",          note:""},
+    {g:"price",  t:"価格",          note:""}
+  ];
+  var h = summaryHTML();
+
+  for(var i=0;i<groups.length;i++){
+    var body = "";
+    for(var key in DATA.meta){
+      if(DATA.meta[key].group === groups[i].g) body += cardHTML(key);
+    }
+    if(!body) continue;
+    h += '<section><h2>'+groups[i].t
+      +  (groups[i].note ? '<span>'+groups[i].note+'</span>' : '')
+      +  '</h2>'+body+'</section>';
+  }
+
+  /* メモ（端末内にだけ保存される） */
+  h += '<section><h2>メモ<span>この端末の中だけに保存されます</span></h2>'
+    +  '<textarea id="memo" placeholder="気づいたこと、次に確認すること…"></textarea>'
+    +  '<div class="row">'
+    +    '<button class="btn" id="exp">書き出す</button>'
+    +    '<button class="btn" id="imp">読み込む</button>'
+    +  '</div></section>';
+
+  /* 収集時に気になった点があれば出す */
+  if(DATA.notes && DATA.notes.length){
+    h += '<div class="notes"><b>データ収集のメモ</b><br>' + DATA.notes.join("<br>") + '</div>';
+  }
+
+  h += '<footer>公開情報をまとめて眺めるための道具です。投資判断そのものは自分で行ってください。'
+    +  '保有数量や資産額はこのページには一切含まれていません。</footer>';
+
+  document.getElementById("app").innerHTML = h;
+
+  /* メモの復元と自動保存 */
+  var memo = document.getElementById("memo");
+  memo.value = LOCAL.memo || "";
+  memo.addEventListener("input", function(){
+    LOCAL.memo = memo.value; saveLocal(LOCAL);
+  });
+  document.getElementById("exp").onclick = exportJSON;
+  document.getElementById("imp").onclick = importJSON;
+
+  /* カードの開閉 */
+  var heads = document.querySelectorAll(".head");
+  for(var k=0;k<heads.length;k++){
+    heads[k].addEventListener("click", function(){
+      var card = this.closest(".card");
+      var key = card.getAttribute("data-key");
+      card.classList.toggle("open");
+      OPEN[key] = card.classList.contains("open");
+      LOCAL.open = OPEN; saveLocal(LOCAL);
+    });
+  }
+}
+
+/* ---------- メモの書き出し / 読み込み ---------- */
+function exportJSON(){
+  try{
+    var blob = new Blob([JSON.stringify(LOCAL, null, 2)], {type:"application/json"});
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "toushi-memo-" + new Date().toISOString().slice(0,10) + ".json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }catch(e){ alert("書き出せませんでした"); }
+}
+function importJSON(){
+  var inp = document.createElement("input");
+  inp.type = "file"; inp.accept = "application/json";
+  inp.onchange = function(){
+    var f = inp.files[0]; if(!f) return;
+    var r = new FileReader();
+    r.onload = function(){
+      try{
+        var o = JSON.parse(r.result);
+        LOCAL.memo = o.memo || ""; saveLocal(LOCAL);
+        document.getElementById("memo").value = LOCAL.memo;
+      }catch(e){ alert("読み込めないファイルでした"); }
+    };
+    r.readAsText(f);
+  };
+  inp.click();
+}
+
+/* ---------- データの読み込み ---------- */
+function load(){
+  document.getElementById("stamp").textContent = "読み込み中…";
+  fetch("./data/toushi.json?t=" + Date.now())
+    .then(function(r){
+      if(!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    })
+    .then(function(json){
+      DATA = json;
+      var d = new Date(json.updated);
+      document.getElementById("stamp").innerHTML =
+        "更新 " + d.toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})
+        + "<br>" + json.dates[json.dates.length-1] + " 時点";
+      render();
+    })
+    .catch(function(e){
+      document.getElementById("stamp").textContent = "読み込み失敗";
+      document.getElementById("app").innerHTML =
+        '<div class="state">データを読み込めませんでした。<br>'
+        + '通信を確認して、右上の ⟳ を押してください。<br><br>'
+        + '<span style="font-size:13px">(' + e.message + ')</span></div>';
+    });
+}
+
+document.getElementById("reload").onclick = load;
+load();
+</script>
+</body>
+</html>

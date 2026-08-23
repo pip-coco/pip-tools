@@ -94,6 +94,44 @@
   }
   .tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:-3px;}
 
+  /* 4つめ（常備品）は矢印で出し入れする */
+  #mainTabs{grid-template-columns:1fr 1fr 1fr 46px;}
+  .tabnext{font-size:1.35rem;padding:0;}
+  .tabnext:hover{color:var(--accent);background:var(--surface-2);}
+  .pantrybar{display:flex;align-items:center;gap:2px;padding:0;}
+  .pantrybar .tabback{
+    flex:none;width:52px;min-height:50px;
+    border:0;border-bottom:2.5px solid transparent;
+    background:transparent;color:var(--accent);
+    font-size:1.4rem;line-height:1;padding:0;cursor:pointer;
+  }
+  .pantrybar .tabback:hover{background:var(--surface-2);}
+  .pantrytitle{
+    font-family:"Zen Maru Gothic","Zen Kaku Gothic New",sans-serif;
+    font-weight:700;font-size:.98rem;letter-spacing:.06em;
+    color:var(--accent);
+  }
+
+  /* 常備品の画面 */
+  .panetools{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:13px 16px;border-bottom:1px solid var(--line);
+  }
+  .pantryinfo{font-size:.88rem;color:var(--muted);}
+  .pantryinfo.warn{color:var(--accent);font-weight:700;}
+  .statepill{
+    flex:none;margin-right:14px;
+    min-height:31px;display:inline-flex;align-items:center;
+    padding:0 14px;border-radius:16px;
+    border:1px solid var(--line-strong);
+    color:var(--muted);font-size:.82rem;white-space:nowrap;
+  }
+  .row.isout .statepill{
+    border-color:var(--accent);background:var(--accent);
+    color:var(--surface);font-weight:700;
+  }
+  .row.isout .rowname{color:var(--accent);font-weight:700;}
+
   main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;}
   .pane{padding:0 0 28px;}
 
@@ -695,10 +733,15 @@
 
 <div class="app">
 
-  <div class="tabs" role="tablist">
+  <div class="tabs" id="mainTabs" role="tablist">
     <button type="button" role="tab" data-tab="shop" aria-selected="true">かいもの</button>
     <button type="button" role="tab" data-tab="plan" aria-selected="false">こんだて</button>
     <button type="button" role="tab" data-tab="dish" aria-selected="false">レシピ</button>
+    <button type="button" class="tabnext" id="toPantry" aria-label="常備品をひらく" title="常備品">›</button>
+  </div>
+  <div class="tabs pantrybar" id="pantryBar" hidden>
+    <button type="button" class="tabback" id="fromPantry" aria-label="もどる">‹</button>
+    <span class="pantrytitle">常備品</span>
   </div>
 
   <div class="toolbar">
@@ -746,6 +789,12 @@
       </div>
       <h2 class="seclabel"><span>毎週の定番</span></h2>
       <div id="stapleBox"></div>
+    </div>
+
+    <!-- ============ 常備品 ============ -->
+    <div class="pane" id="pane-pantry" hidden>
+      <div class="panetools" id="pantryTools"></div>
+      <div id="pantryList"></div>
     </div>
   </main>
 
@@ -829,9 +878,28 @@
       staples: [
         i('バナナ',1,'房'), i('ヨーグルト',2,'個'), i('卵',1,'パック'), i('納豆',2,'パック')
       ],
+      pantry: seedPantry(),
       settings:{ weekStartDay: 3 },   // 0=日 1=月 2=火 3=水 4=木 5=金 6=土
       plansByDate:{}, extras:{}, checked:{}, skipped:{}, bought:{}
     };
+  }
+
+  // 家に置いてある調味料・常備食材。out=true が「切らした（買う）」
+  function seedPantry(){
+    return [
+      pt('しょうゆ',1,'本'), pt('みりん',1,'本'), pt('料理酒',1,'本'),
+      pt('砂糖',1,'袋'), pt('塩',1,'袋'), pt('こしょう',1,'個'),
+      pt('味噌',1,'パック'), pt('サラダ油',1,'本'), pt('ごま油',1,'本'),
+      pt('オリーブオイル',1,'本'), pt('酢',1,'本'), pt('マヨネーズ',1,'本'),
+      pt('ケチャップ',1,'本'), pt('中濃ソース',1,'本'), pt('めんつゆ',1,'本'),
+      pt('だしパック',1,'袋'), pt('小麦粉',1,'袋'), pt('片栗粉',1,'袋'),
+      pt('パン粉',1,'袋'), pt('焼きのり',1,'袋')
+    ];
+  }
+  function pt(name, qty, unit){
+    var o = i(name, qty, unit);
+    o.out = false;
+    return o;
   }
   function uid(){ return Math.random().toString(36).slice(2,9); }
   function d(name, cat, ings){ return { id: uid(), name: name, cat: cat, ingredients: ings }; }
@@ -846,7 +914,8 @@
 
   // ---------- 保存・読み込み ----------
   var state = load();
-  var view = { tab:'shop', week: weekStartOf(new Date()), openDish:null, dishFilter:'all' };
+  var view = { tab:'shop', prevTab:'shop', week: weekStartOf(new Date()),
+               openDish:null, dishFilter:'all', pantryEdit:false };
   var undoSnap = null, toastTimer = null;
   var pickTarget = null, pickDate = null, pickCat = null, qtyItem = null;
 
@@ -866,6 +935,8 @@
     raw.skipped = raw.skipped || {};
     raw.bought = raw.bought || {};
     raw.staples = raw.staples || [];
+    // 常備品はあとから足した機能なので、無ければ初期セットを入れる
+    if (!Array.isArray(raw.pantry)) raw.pantry = seedPantry();
     raw.settings = raw.settings || {};
     if (typeof raw.settings.weekStartDay !== 'number') raw.settings.weekStartDay = 3;
 
@@ -965,10 +1036,35 @@
     }
     state.staples.forEach(function(s){ if (!s.deleted) push(s, null); });
 
+    // 常備品のうち「切らした」ものを足す。
+    // すでに同じ名前があれば単位が違ってもそこに合流させる（二重に出さないため）
+    state.pantry.forEach(function(p){
+      if (p.deleted || !p.out || !p.name || !p.name.trim()) return;
+      var found = null;
+      map.forEach(function(v){ if (!found && v.name === p.name) found = v; });
+      if (!found){
+        var k = itemKey(p.name, p.unit);
+        found = map.get(k);
+        if (!found){
+          found = { key:k, name:p.name, unit:p.unit, qty:p.qty,
+                    from:[], fromPlan:false, fromStaple:false };
+          map.set(k, found);
+        }
+      }
+      found.fromPantry = true;
+      found.pantryIds = (found.pantryIds || []).concat([p.id]);
+      // レシピ側が「適量」なら、常備品の分量（1本など）を採用して買う量を出す
+      if (found.qty === null && typeof p.qty === 'number'){
+        found.qty = p.qty;
+        found.unit = p.unit;
+      }
+      if (found.from.length && found.from.indexOf('常備') < 0) found.from.push('常備');
+    });
+
     var merged = Array.from(map.values());
     merged.forEach(function(x){
       if (x.fromPlan && x.fromStaple && x.from.indexOf('定番') < 0) x.from.push('定番');
-      if (!x.fromPlan) x.kind = '定番';
+      if (!x.fromPlan) x.kind = x.fromStaple ? '定番' : '常備';
     });
 
     var extraAll = (state.extras[wk] || []).map(function(e){
@@ -981,7 +1077,8 @@
     return {
       // 献立に出てくるものは「献立の材料」側にまとめる（定番と二重に出さない）
       plan: merged.filter(function(x){ return x.fromPlan; }).filter(shown),
-      staples: merged.filter(function(x){ return !x.fromPlan; }).filter(shown),
+      staples: merged.filter(function(x){ return !x.fromPlan && x.fromStaple; }).filter(shown),
+      pantry: merged.filter(function(x){ return !x.fromPlan && !x.fromStaple && x.fromPantry; }).filter(shown),
       extras: extraAll.filter(shown),
       // 今週だけ外したもの。買い物リストの一番下から戻せる。
       hidden: merged.concat(extraAll).filter(hidden)
@@ -998,15 +1095,19 @@
     document.getElementById('pane-plan').hidden = view.tab !== 'plan';
     document.getElementById('pane-shop').hidden = view.tab !== 'shop';
     document.getElementById('pane-dish').hidden = view.tab !== 'dish';
+    document.getElementById('pane-pantry').hidden = view.tab !== 'pantry';
+    document.getElementById('mainTabs').hidden = view.tab === 'pantry';
+    document.getElementById('pantryBar').hidden = view.tab !== 'pantry';
     document.getElementById('addForm').hidden = view.tab !== 'shop';
     document.getElementById('toast').classList.toggle('high', view.tab !== 'shop');
-    Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function(b){
+    Array.prototype.forEach.call(document.querySelectorAll('#mainTabs button[data-tab]'), function(b){
       b.setAttribute('aria-selected', b.dataset.tab === view.tab ? 'true' : 'false');
     });
     renderWeekLabels();
     if (view.tab === 'plan') renderPlan();
     if (view.tab === 'shop') renderShop();
     if (view.tab === 'dish') renderDishes();
+    if (view.tab === 'pantry') renderPantry();
   }
 
   function renderWeekLabels(){
@@ -1069,7 +1170,7 @@
     host.textContent = '';
     var data = buildList();
     var checked = state.checked[view.week] || {};
-    var all = data.plan.concat(data.staples, data.extras);
+    var all = data.plan.concat(data.staples, data.pantry, data.extras);
     var doneN = all.filter(function(x){ return checked[x.key]; }).length;
 
     document.getElementById('shopCount').textContent =
@@ -1085,6 +1186,7 @@
 
     section(host, '献立の材料', data.plan, checked);
     section(host, '毎週の定番', data.staples, checked);
+    section(host, '切らした常備品', data.pantry, checked);
     section(host, 'その他', data.extras, checked);
     hiddenSection(host, data.hidden);
   }
@@ -1193,7 +1295,7 @@
         main.appendChild(fr);
       }
       tick.appendChild(box); tick.appendChild(main);
-      tick.addEventListener('click', function(){ toggleCheck(it.key); });
+      tick.addEventListener('click', function(){ toggleCheck(it); });
       row.appendChild(tick);
 
       // 数量。数字があるものは押せるボタンにして、買った数を入れられるようにする
@@ -1273,9 +1375,11 @@
     if (n >= total){
       state.checked[view.week][k] = true;
       delete state.bought[view.week][k];
+      setPantryOut(qtyItem, false);
     } else if (n <= 0){
       delete state.checked[view.week][k];
       delete state.bought[view.week][k];
+      setPantryOut(qtyItem, true);
     } else {
       delete state.checked[view.week][k];
       state.bought[view.week][k] = n;
@@ -1395,13 +1499,103 @@
     wrap.appendChild(addS);
     sbox.appendChild(wrap);
 
-    // 消した定番
-    var gone = state.staples.filter(function(s){ return s.deleted; });
-    if (!gone.length) return;
+    restoreBox(sbox, state.staples.filter(function(s){ return s.deleted; }), '消した定番');
+  }
 
+  // ================= 常備品 =================
+  function renderPantry(){
+    var live = state.pantry.filter(function(p){ return !p.deleted; });
+    var outN = live.filter(function(p){ return p.out; }).length;
+
+    var tools = document.getElementById('pantryTools');
+    tools.textContent = '';
+    var info = document.createElement('span');
+    info.className = 'pantryinfo' + (outN ? ' warn' : '');
+    info.textContent = outN ? ('切らしているもの ' + outN + '品') : 'ぜんぶそろっています';
+    tools.appendChild(info);
+    var eb = document.createElement('button');
+    eb.type='button'; eb.className='ghost';
+    eb.textContent = view.pantryEdit ? '完了' : '編集';
+    eb.addEventListener('click', function(){ view.pantryEdit = !view.pantryEdit; render(); });
+    tools.appendChild(eb);
+
+    var host = document.getElementById('pantryList');
+    host.textContent = '';
+
+    if (view.pantryEdit){
+      var wrap = document.createElement('div');
+      wrap.className = 'editor';
+      var head = document.createElement('div');
+      head.className = 'inghead';
+      ['品名','数量','単位',''].forEach(function(t){
+        var s=document.createElement('span'); s.textContent=t; head.appendChild(s);
+      });
+      wrap.appendChild(head);
+      live.forEach(function(p){
+        wrap.appendChild(ingRow(p, function(){
+          snapshot(); p.deleted = true; save(); render();
+          toast('「' + (p.name || 'この行') + '」を常備品から外しました');
+        }));
+      });
+      var add = document.createElement('button');
+      add.type='button'; add.className='ghost'; add.textContent='＋ 常備品を追加';
+      add.addEventListener('click', function(){
+        state.pantry.push(pt('', 1, '本')); save(); render();
+      });
+      wrap.appendChild(add);
+      host.appendChild(wrap);
+
+      restoreBox(host, state.pantry.filter(function(p){ return p.deleted; }), '消した常備品');
+      return;
+    }
+
+    if (!live.length){
+      var em = document.createElement('div');
+      em.className = 'empty';
+      em.innerHTML = '<span class="mark">○</span>常備品がありません。<br>「編集」から追加できます。';
+      host.appendChild(em);
+      return;
+    }
+
+    live.forEach(function(p){
+      var row = document.createElement('div');
+      row.className = 'row pantryrow' + (p.out ? ' isout' : '');
+      var btn = document.createElement('button');
+      btn.type='button'; btn.className='rowtick';
+      btn.setAttribute('aria-pressed', p.out ? 'true' : 'false');
+
+      var main = document.createElement('span'); main.className='rowmain';
+      var nm = document.createElement('span'); nm.className='rowname';
+      var t1 = document.createElement('span'); t1.textContent = p.name || '(名前なし)';
+      nm.appendChild(t1);
+      main.appendChild(nm);
+      if (p.out){
+        var fr = document.createElement('span'); fr.className='rowfrom';
+        fr.textContent = '買い物リストに出ています（' + fmtQty(p.qty, p.unit) + '）';
+        main.appendChild(fr);
+      }
+      btn.appendChild(main);
+
+      var pill = document.createElement('span');
+      pill.className = 'statepill';
+      pill.textContent = p.out ? '切らした' : 'ある';
+      btn.appendChild(pill);
+
+      btn.addEventListener('click', function(){
+        p.out = !p.out;
+        save(); render();
+      });
+      row.appendChild(btn);
+      host.appendChild(row);
+    });
+  }
+
+  // 「消した◯◯」の復元欄（定番と常備品で共用）
+  function restoreBox(host, gone, title){
+    if (!gone.length) return;
     var h = document.createElement('h2');
     h.className = 'seclabel';
-    var t = document.createElement('span'); t.textContent = '消した定番';
+    var t = document.createElement('span'); t.textContent = title;
     var right = document.createElement('span');
     right.style.display='flex'; right.style.alignItems='baseline'; right.style.gap='12px';
     var n = document.createElement('span'); n.className='n'; n.textContent = gone.length + '品';
@@ -1414,30 +1608,26 @@
     });
     right.appendChild(n); right.appendChild(allBtn);
     h.appendChild(t); h.appendChild(right);
-    sbox.appendChild(h);
+    host.appendChild(h);
 
     gone.forEach(function(s){
       var row = document.createElement('div');
       row.className = 'row hiddenrow';
-      var main = document.createElement('div');
-      main.className = 'hiddenmain';
+      var main = document.createElement('div'); main.className='hiddenmain';
       var nm = document.createElement('span'); nm.className='rowname';
       var t1 = document.createElement('span'); t1.textContent = s.name || '(名前なし)';
       var t2 = document.createElement('span'); t2.className='qty'; t2.textContent = fmtQty(s.qty, s.unit);
       nm.appendChild(t1); nm.appendChild(t2);
       main.appendChild(nm);
-
       var back = document.createElement('button');
       back.type='button'; back.className='restore'; back.textContent='もどす';
-      back.setAttribute('aria-label', (s.name || 'この行') + ' を定番に戻す');
+      back.setAttribute('aria-label', (s.name || 'この行') + ' をもどす');
       back.addEventListener('click', function(){
-        delete s.deleted;
-        save(); render();
-        toast('「' + (s.name || 'この行') + '」を定番に戻しました', true);
+        delete s.deleted; save(); render();
+        toast('「' + (s.name || 'この行') + '」をもどしました', true);
       });
-
       row.appendChild(main); row.appendChild(back);
-      sbox.appendChild(row);
+      host.appendChild(row);
     });
   }
 
@@ -1665,13 +1855,24 @@
     save(); render();
   }
 
-  function toggleCheck(k){
+  function toggleCheck(it){
+    var k = it.key;
     if (!state.checked[view.week]) state.checked[view.week] = {};
     var c = state.checked[view.week];
-    if (c[k]) delete c[k]; else c[k] = true;
+    var nowChecked = !c[k];
+    if (nowChecked) c[k] = true; else delete c[k];
     // 全部買った／未着手にするので、途中まで買った記録は消す
     if (state.bought[view.week]) delete state.bought[view.week][k];
+    setPantryOut(it, !nowChecked);
     save(); render();
+  }
+
+  // 買ったら常備品の印を「ある」に戻す（買ったのに翌週も残るのを防ぐ）
+  function setPantryOut(it, out){
+    if (!it || !it.pantryIds || !it.pantryIds.length) return;
+    it.pantryIds.forEach(function(id){
+      state.pantry.forEach(function(p){ if (p.id === id) p.out = out; });
+    });
   }
 
   // 消すのではなく「今週だけ外す」。一番下の「今週はずしたもの」から戻せる。
@@ -1757,8 +1958,18 @@
   }
 
   // ================= イベント =================
-  Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function(b){
+  Array.prototype.forEach.call(document.querySelectorAll('#mainTabs button[data-tab]'), function(b){
     b.addEventListener('click', function(){ view.tab = b.dataset.tab; render(); });
+  });
+  document.getElementById('toPantry').addEventListener('click', function(){
+    view.prevTab = view.tab;
+    view.tab = 'pantry';
+    render();
+  });
+  document.getElementById('fromPantry').addEventListener('click', function(){
+    view.pantryEdit = false;
+    view.tab = view.prevTab || 'shop';
+    render();
   });
   function shiftWeek(n){
     view.week = key(addDays(view.week, n*7));
