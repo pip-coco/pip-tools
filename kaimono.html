@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>買い物リスト</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Maru+Gothic:wght@500;700&family=IBM+Plex+Mono:wght@500&display=swap">
+
+<style>
+  /* ===== 色の定義（ライトモード） ===== */
+  :root{
+    --bg:#EFEEF2;
+    --surface:#FFFFFF;
+    --surface-2:#F6F4F8;
+    --fg:#221E26;
+    --muted:#6B6473;
+    --line:#E1DDE6;
+    --line-strong:#C9C2D0;
+    --accent:#6E2E63;
+    --accent-soft:#F3E9F1;
+    --done:#456F37;
+    --shadow:0 1px 2px rgba(34,24,38,.05), 0 12px 28px -18px rgba(34,24,38,.35);
+  }
+  /* ===== ダークモード（端末の設定に自動追従） ===== */
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#15121A;
+      --surface:#1F1B25;
+      --surface-2:#282231;
+      --fg:#ECE7F0;
+      --muted:#A099A9;
+      --line:#332C3B;
+      --line-strong:#4A4155;
+      --accent:#DA9ECC;
+      --accent-soft:#2B2130;
+      --done:#8CBE72;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 28px -18px rgba(0,0,0,.8);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#15121A;
+    --surface:#1F1B25;
+    --surface-2:#282231;
+    --fg:#ECE7F0;
+    --muted:#A099A9;
+    --line:#332C3B;
+    --line-strong:#4A4155;
+    --accent:#DA9ECC;
+    --accent-soft:#2B2130;
+    --done:#8CBE72;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 28px -18px rgba(0,0,0,.8);
+  }
+
+  *{box-sizing:border-box;}
+  /* hidden 属性を確実に効かせる（display 指定のあるクラスに負けないように） */
+  [hidden]{display:none !important;}
+
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--fg);
+    font-family:"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;
+    font-size:17px;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+  }
+
+  .app{
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    height:100dvh;
+    max-width:480px;
+    margin:0 auto;
+    background:var(--surface);
+    border-left:1px solid var(--line);
+    border-right:1px solid var(--line);
+  }
+  @media (max-width:520px){
+    .app{border-left:0;border-right:0;}
+  }
+
+  /* ===== ヘッダー ===== */
+  header{
+    flex:none;
+    padding:18px 18px 14px;
+    border-bottom:1px solid var(--line);
+    background:var(--surface);
+  }
+  .titlerow{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+  }
+  h1{
+    font-family:"Zen Maru Gothic","Zen Kaku Gothic New",sans-serif;
+    font-weight:700;
+    font-size:1.5rem;
+    letter-spacing:.03em;
+    margin:0;
+    color:var(--accent);
+  }
+  .icon{
+    flex:none;
+    width:44px;
+    height:44px;
+    margin:-8px -10px -8px 0;
+    border:0;
+    background:transparent;
+    color:var(--muted);
+    border-radius:50%;
+    font-size:1.35rem;
+    line-height:1;
+    cursor:pointer;
+    display:grid;
+    place-content:center;
+  }
+  .icon:hover{background:var(--surface-2);}
+  .icon:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+
+  .count{
+    margin:4px 0 0;
+    font-size:.9rem;
+    color:var(--muted);
+    display:flex;
+    align-items:baseline;
+    gap:5px;
+  }
+  .count .num{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:1.05rem;
+    font-variant-numeric:tabular-nums;
+    color:var(--fg);
+  }
+  .count .sep{color:var(--line-strong);}
+
+  /* ===== メニュー ===== */
+  .scrim{
+    position:absolute;
+    inset:0;
+    z-index:20;
+    background:transparent;
+  }
+  .menu{
+    position:absolute;
+    z-index:21;
+    top:58px;
+    right:14px;
+    width:236px;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:8px;
+    box-shadow:var(--shadow);
+    padding:6px;
+    display:flex;
+    flex-direction:column;
+    gap:1px;
+  }
+  .menu button{
+    appearance:none;
+    border:0;
+    background:transparent;
+    color:var(--fg);
+    font:inherit;
+    font-size:.95rem;
+    text-align:left;
+    padding:11px 12px;
+    border-radius:5px;
+    cursor:pointer;
+    min-height:44px;
+  }
+  .menu button:hover{background:var(--surface-2);}
+  .menu button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
+  .menu hr{border:0;border-top:1px solid var(--line);margin:5px 4px;}
+
+  /* ===== リスト ===== */
+  main{
+    flex:1;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    padding-bottom:20px;
+  }
+  .list{list-style:none;margin:0;padding:0;}
+
+  .item{
+    display:flex;
+    align-items:stretch;
+    border-bottom:1px solid var(--line);
+    animation:slidein .18s ease;
+  }
+  @keyframes slidein{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:none;}}
+
+  .tick{
+    flex:1;
+    display:flex;
+    align-items:center;
+    gap:13px;
+    min-height:56px;
+    padding:8px 4px 8px 18px;
+    border:0;
+    background:transparent;
+    color:var(--fg);
+    font:inherit;
+    text-align:left;
+    cursor:pointer;
+  }
+  .tick:focus-visible{outline:2px solid var(--accent);outline-offset:-3px;}
+  .box{
+    flex:none;
+    width:23px;
+    height:23px;
+    border:2px solid var(--line-strong);
+    border-radius:50%;
+    display:grid;
+    place-content:center;
+  }
+  .box::after{
+    content:"";
+    width:10px;
+    height:5px;
+    border-left:2.5px solid var(--surface);
+    border-bottom:2.5px solid var(--surface);
+    transform:rotate(-45deg) scale(0);
+    transition:transform .14s ease;
+  }
+  .name{
+    flex:1;
+    word-break:break-word;
+    line-height:1.45;
+  }
+
+  .del{
+    flex:none;
+    width:52px;
+    border:0;
+    background:transparent;
+    color:var(--line-strong);
+    font-size:1rem;
+    cursor:pointer;
+  }
+  .del:hover{color:var(--fg);}
+  .del:focus-visible{outline:2px solid var(--accent);outline-offset:-3px;}
+
+  /* チェック済み */
+  .done .box{border-color:var(--done);background:var(--done);}
+  .done .box::after{transform:rotate(-45deg) scale(1);}
+  .done .name{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--line-strong);}
+
+  .section-label{
+    margin:0;
+    padding:20px 18px 8px;
+    font-family:"Zen Maru Gothic","Zen Kaku Gothic New",sans-serif;
+    font-size:.8rem;
+    font-weight:500;
+    letter-spacing:.14em;
+    color:var(--muted);
+    border-top:1px solid var(--line);
+  }
+  #doneWrap{margin-top:8px;}
+
+  /* ===== 何もないとき ===== */
+  .empty{
+    padding:64px 32px;
+    text-align:center;
+    color:var(--muted);
+    font-size:.95rem;
+    line-height:1.9;
+  }
+  .empty .mark{
+    display:block;
+    font-family:"Zen Maru Gothic",sans-serif;
+    font-size:2.2rem;
+    color:var(--line-strong);
+    margin-bottom:14px;
+    letter-spacing:.1em;
+  }
+
+  /* ===== 元に戻すバー ===== */
+  .toast{
+    position:absolute;
+    left:12px;
+    right:12px;
+    bottom:calc(78px + env(safe-area-inset-bottom, 0px));
+    z-index:30;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    background:var(--fg);
+    color:var(--surface);
+    border-radius:8px;
+    padding:10px 10px 10px 16px;
+    font-size:.9rem;
+    box-shadow:var(--shadow);
+    animation:rise .2s ease;
+  }
+  @keyframes rise{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+  .toast button{
+    flex:none;
+    border:0;
+    background:transparent;
+    color:var(--surface);
+    font:inherit;
+    font-weight:700;
+    text-decoration:underline;
+    text-underline-offset:3px;
+    padding:8px 10px;
+    min-height:40px;
+    cursor:pointer;
+    border-radius:5px;
+  }
+  .toast button:focus-visible{outline:2px solid var(--surface);outline-offset:-2px;}
+
+  /* ===== 入力バー（画面下・親指の届く位置） ===== */
+  .addbar{
+    flex:none;
+    display:flex;
+    gap:9px;
+    padding:12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+    border-top:1px solid var(--line);
+    background:var(--surface-2);
+  }
+  .addbar input{
+    flex:1;
+    min-width:0;
+    font:inherit;
+    font-size:1.0625rem;
+    padding:0 15px;
+    height:50px;
+    border:1px solid var(--line-strong);
+    border-radius:7px;
+    background:var(--surface);
+    color:var(--fg);
+  }
+  .addbar input::placeholder{color:var(--muted);opacity:.75;}
+  .addbar input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent);}
+  .addbar button{
+    flex:none;
+    height:50px;
+    padding:0 22px;
+    border:0;
+    border-radius:7px;
+    background:var(--accent);
+    color:var(--surface);
+    font-family:"Zen Maru Gothic","Zen Kaku Gothic New",sans-serif;
+    font-size:1rem;
+    font-weight:700;
+    letter-spacing:.06em;
+    cursor:pointer;
+  }
+  .addbar button:active{opacity:.85;}
+  .addbar button:focus-visible{outline:2px solid var(--fg);outline-offset:2px;}
+
+  @media (prefers-reduced-motion: reduce){
+    *{animation:none !important;transition:none !important;}
+  }
+</style>
+
+<div class="app">
+
+  <header>
+    <div class="titlerow">
+      <h1>買い物リスト</h1>
+      <button class="icon" id="menuBtn" aria-label="メニューを開く" aria-expanded="false">⋯</button>
+    </div>
+    <p class="count">
+      <span class="num" id="remainNum">0</span><span>品のこり</span>
+      <span class="sep" id="sep" hidden>／</span>
+      <span id="doneNote" hidden></span>
+    </p>
+  </header>
+
+  <div class="scrim" id="scrim" hidden></div>
+  <div class="menu" id="menu" hidden>
+    <button type="button" data-act="clearDone">カゴに入れたものを消す</button>
+    <button type="button" data-act="clearAll">ぜんぶ消す</button>
+    <hr>
+    <button type="button" data-act="export">バックアップを書き出す</button>
+    <button type="button" data-act="import">バックアップを読み込む</button>
+  </div>
+
+  <main>
+    <ul class="list" id="todoList"></ul>
+    <div class="empty" id="empty" hidden>
+      <span class="mark">○</span>
+      まだ何も入っていません。<br>
+      下の欄に品名を入れて「追加」を押してください。
+    </div>
+    <section id="doneWrap" hidden>
+      <h2 class="section-label">カゴに入れた</h2>
+      <ul class="list done" id="doneList"></ul>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" hidden>
+    <span id="toastMsg"></span>
+    <button type="button" id="undoBtn">元に戻す</button>
+  </div>
+
+  <form class="addbar" id="addForm">
+    <input type="text" id="nameInput" placeholder="牛乳、にんじん、卵…" autocomplete="off" enterkeyhint="done" aria-label="品名">
+    <button type="submit">追加</button>
+  </form>
+
+  <input type="file" id="fileInput" accept="application/json,.json" hidden>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // 保存先のキー。アプリ名＋バージョンで名前空間を切っておく
+  var KEY = 'kaimono.v1';
+
+  var items = load();          // [{id, name, done}]
+  var undoSnapshot = null;     // 「元に戻す」用に直前の状態を丸ごと持っておく
+  var toastTimer = null;
+
+  // --- 保存と読み込み（壊れていてもアプリを落とさない） ---
+  function load(){
+    try {
+      var raw = JSON.parse(localStorage.getItem(KEY));
+      return Array.isArray(raw) ? raw : [];
+    } catch (e) { return []; }
+  }
+  function save(){
+    try { localStorage.setItem(KEY, JSON.stringify(items)); } catch (e) {}
+  }
+
+  // --- 画面を描き直す ---
+  function render(){
+    var todoList = document.getElementById('todoList');
+    var doneList = document.getElementById('doneList');
+    todoList.textContent = '';
+    doneList.textContent = '';
+
+    var todo = items.filter(function(it){ return !it.done; });
+    var done = items.filter(function(it){ return it.done; });
+
+    todo.forEach(function(it){ todoList.appendChild(row(it)); });
+    done.forEach(function(it){ doneList.appendChild(row(it)); });
+
+    // 件数の表示
+    document.getElementById('remainNum').textContent = todo.length;
+    var note = document.getElementById('doneNote');
+    var sep = document.getElementById('sep');
+    if (done.length) {
+      note.textContent = 'カゴに ' + done.length + ' 品';
+      note.hidden = false; sep.hidden = false;
+    } else {
+      note.hidden = true; sep.hidden = true;
+    }
+
+    // 何もないときの案内
+    document.getElementById('empty').hidden = items.length > 0;
+    document.getElementById('doneWrap').hidden = done.length === 0;
+  }
+
+  // --- 1行分のHTMLを組み立てる ---
+  function row(it){
+    var li = document.createElement('li');
+    li.className = 'item' + (it.done ? ' done' : '');
+
+    var tick = document.createElement('button');
+    tick.type = 'button';
+    tick.className = 'tick';
+    tick.setAttribute('aria-pressed', it.done ? 'true' : 'false');
+
+    var box = document.createElement('span');
+    box.className = 'box';
+    var name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = it.name;
+    tick.appendChild(box);
+    tick.appendChild(name);
+    tick.addEventListener('click', function(){ toggle(it.id); });
+
+    var del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'del';
+    del.textContent = '✕';
+    del.setAttribute('aria-label', it.name + ' を削除');
+    del.addEventListener('click', function(){ remove(it.id); });
+
+    li.appendChild(tick);
+    li.appendChild(del);
+    return li;
+  }
+
+  // --- 操作 ---
+  function add(name){
+    name = name.trim();
+    if (!name) return;
+    items.unshift({ id: String(Date.now()) + Math.random().toString(36).slice(2,6), name: name, done: false });
+    save(); render();
+  }
+
+  function toggle(id){
+    items.forEach(function(it){ if (it.id === id) it.done = !it.done; });
+    save(); render();
+  }
+
+  function remove(id){
+    var target = items.filter(function(it){ return it.id === id; })[0];
+    snapshot();
+    items = items.filter(function(it){ return it.id !== id; });
+    save(); render();
+    toast('「' + target.name + '」を消しました');
+  }
+
+  function clearDone(){
+    var n = items.filter(function(it){ return it.done; }).length;
+    if (!n) { toast('カゴに入れたものはまだありません', true); return; }
+    snapshot();
+    items = items.filter(function(it){ return !it.done; });
+    save(); render();
+    toast(n + ' 品を消しました');
+  }
+
+  function clearAll(){
+    if (!items.length) { toast('リストは空です', true); return; }
+    var n = items.length;
+    snapshot();
+    items = [];
+    save(); render();
+    toast(n + ' 品ぜんぶ消しました');
+  }
+
+  // --- 元に戻す ---
+  function snapshot(){
+    undoSnapshot = JSON.parse(JSON.stringify(items));
+  }
+  function undo(){
+    if (!undoSnapshot) return;
+    items = undoSnapshot;
+    undoSnapshot = null;
+    save(); render(); hideToast();
+  }
+
+  function toast(msg, noUndo){
+    var el = document.getElementById('toast');
+    document.getElementById('toastMsg').textContent = msg;
+    document.getElementById('undoBtn').hidden = !!noUndo;
+    el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(hideToast, 6000);
+  }
+  function hideToast(){
+    document.getElementById('toast').hidden = true;
+  }
+
+  // --- バックアップ ---
+  async function exportJSON(){
+    if (!items.length) { toast('書き出すものがありません', true); return; }
+    var stamp = new Date().toISOString().slice(0,10);
+    var filename = 'kaimono-' + stamp + '.json';
+    var text = JSON.stringify(items, null, 2);
+
+    // Claude の公開ページ上では、ページ単体でファイルを保存できないので
+    // ホスト側の保存機能を借りる。GitHub Pages やローカルでは下の通常処理に落ちる。
+    var dl = null;
+    try {
+      if (window.claude && typeof window.claude.use === 'function') {
+        dl = await window.claude.use('downloads');
+      }
+    } catch (e) { dl = null; }
+
+    if (dl) {
+      try {
+        await dl.save({ filename: filename, data: text });
+        toast('書き出しました', true);
+      } catch (err) {
+        if (!err || err.code !== 'declined') toast('書き出せませんでした', true);
+      }
+      return;
+    }
+
+    var blob = new Blob([text], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+    toast('書き出しました', true);
+  }
+
+  function importJSON(file){
+    var reader = new FileReader();
+    reader.onload = function(){
+      try {
+        var data = JSON.parse(reader.result);
+        if (!Array.isArray(data)) throw new Error('形式が違います');
+        snapshot();
+        items = data.filter(function(it){ return it && typeof it.name === 'string'; })
+                    .map(function(it){
+                      return { id: it.id || String(Math.random()), name: it.name, done: !!it.done };
+                    });
+        save(); render();
+        toast(items.length + ' 品を読み込みました');
+      } catch (e) {
+        toast('読み込めませんでした。書き出したJSONファイルを選んでください', true);
+      }
+    };
+    reader.onerror = function(){ toast('ファイルを開けませんでした', true); };
+    reader.readAsText(file);
+  }
+
+  // --- メニューの開閉 ---
+  var menu = document.getElementById('menu');
+  var scrim = document.getElementById('scrim');
+  var menuBtn = document.getElementById('menuBtn');
+
+  function setMenu(open){
+    menu.hidden = !open;
+    scrim.hidden = !open;
+    menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  menuBtn.addEventListener('click', function(){ setMenu(menu.hidden); });
+  scrim.addEventListener('click', function(){ setMenu(false); });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') setMenu(false); });
+
+  menu.addEventListener('click', function(e){
+    var act = e.target && e.target.dataset ? e.target.dataset.act : null;
+    if (!act) return;
+    setMenu(false);
+    if (act === 'clearDone') clearDone();
+    if (act === 'clearAll') clearAll();
+    if (act === 'export') exportJSON();
+    if (act === 'import') document.getElementById('fileInput').click();
+  });
+
+  // --- 入力まわり ---
+  document.getElementById('addForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var input = document.getElementById('nameInput');
+    add(input.value);
+    input.value = '';
+    input.focus();   // 続けて入力できるようにフォーカスを戻す
+  });
+
+  document.getElementById('fileInput').addEventListener('change', function(e){
+    if (e.target.files && e.target.files[0]) importJSON(e.target.files[0]);
+    e.target.value = '';
+  });
+
+  document.getElementById('undoBtn').addEventListener('click', undo);
+
+  render();
+})();
+</script>
+
+</html>
