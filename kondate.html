@@ -291,6 +291,31 @@
   .row.checked .box::after{transform:rotate(-45deg) scale(1);}
   .row.checked .rowname{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--line-strong);}
   .row.checked .qty{color:var(--muted);}
+  /* 今週はずしたもの */
+  .row.hiddenrow{
+    background:var(--surface-2);
+    align-items:center;
+    padding:8px 12px 8px 18px;
+    gap:10px;
+  }
+  .hiddenmain{flex:1;min-width:0;opacity:.62;}
+  .restore{
+    flex:none;
+    min-height:40px;padding:0 15px;
+    border:1px solid var(--line-strong);border-radius:20px;
+    background:var(--surface);color:var(--fg);
+    font:inherit;font-size:.85rem;cursor:pointer;white-space:nowrap;
+  }
+  .restore:hover{border-color:var(--accent);color:var(--accent);}
+  .restore:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+  .restoreall{
+    border:0;background:transparent;
+    color:var(--accent);font:inherit;font-size:.78rem;
+    letter-spacing:.04em;text-decoration:underline;text-underline-offset:3px;
+    padding:4px 2px;cursor:pointer;
+  }
+  .restoreall:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+
   .rowx{
     flex:none;width:48px;
     border:0;background:transparent;color:var(--line-strong);
@@ -853,17 +878,24 @@
       }
     }
 
-    var fromPlan = Array.from(map.values()).filter(function(x){ return !skipped[x.key]; });
-
-    var staples = state.staples.map(function(s){
-      return { key:itemKey(s.name, s.unit), name:s.name, unit:s.unit, qty:s.qty, from:[] };
-    }).filter(function(x){ return !skipped[x.key]; });
-
-    var extras = (state.extras[wk] || []).map(function(e){
-      return { key:'x:'+e.id, name:e.name, unit:'', qty:null, from:[], extraId:e.id };
+    var planAll = Array.from(map.values());
+    var stapleAll = state.staples.map(function(s){
+      return { key:itemKey(s.name, s.unit), name:s.name, unit:s.unit, qty:s.qty, from:[], kind:'定番' };
+    });
+    var extraAll = (state.extras[wk] || []).map(function(e){
+      return { key:'x:'+e.id, name:e.name, unit:'', qty:null, from:[], extraId:e.id, kind:'その他' };
     });
 
-    return { plan:fromPlan, staples:staples, extras:extras };
+    function shown(x){ return !skipped[x.key]; }
+    function hidden(x){ return !!skipped[x.key]; }
+
+    return {
+      plan: planAll.filter(shown),
+      staples: stapleAll.filter(shown),
+      extras: extraAll.filter(shown),
+      // 今週だけ外したもの。買い物リストの一番下から戻せる。
+      hidden: planAll.concat(stapleAll, extraAll).filter(hidden)
+    };
   }
 
   function findDish(id){
@@ -953,7 +985,7 @@
     document.getElementById('shopCount').textContent =
       all.length ? (all.length - doneN) + ' 品のこり' : '';
 
-    if (!all.length){
+    if (!all.length && !data.hidden.length){
       var em = document.createElement('div');
       em.className = 'empty';
       em.innerHTML = '<span class="mark">○</span>まだ何もありません。<br>「こんだて」タブで料理を入れると、<br>材料がここに集まります。';
@@ -964,6 +996,74 @@
     section(host, '献立の材料', data.plan, checked);
     section(host, '毎週の定番', data.staples, checked);
     section(host, 'その他', data.extras, checked);
+    hiddenSection(host, data.hidden);
+  }
+
+  // 今週だけ外したものを、いつでも戻せるようにしておく
+  function hiddenSection(host, items){
+    if (!items.length) return;
+
+    var h = document.createElement('h2');
+    h.className = 'seclabel';
+    var t = document.createElement('span'); t.textContent = '今週はずしたもの';
+    var wrap = document.createElement('span');
+    wrap.style.display = 'flex';
+    wrap.style.alignItems = 'baseline';
+    wrap.style.gap = '12px';
+    var n = document.createElement('span'); n.className='n'; n.textContent = items.length + '品';
+    var allBtn = document.createElement('button');
+    allBtn.type='button'; allBtn.className='restoreall'; allBtn.textContent='全部もどす';
+    allBtn.addEventListener('click', function(){
+      snapshot();
+      delete state.skipped[view.week];
+      save(); render();
+      toast(items.length + ' 品もどしました');
+    });
+    wrap.appendChild(n); wrap.appendChild(allBtn);
+    h.appendChild(t); h.appendChild(wrap);
+    host.appendChild(h);
+
+    items.forEach(function(it){
+      var row = document.createElement('div');
+      row.className = 'row hiddenrow';
+
+      var main = document.createElement('div');
+      main.className = 'hiddenmain';
+      var nm = document.createElement('span'); nm.className='rowname';
+      var t1 = document.createElement('span'); t1.textContent = it.name;
+      nm.appendChild(t1);
+      // 手で足したものは分量を持たないので「適量」とは出さない
+      if (!it.extraId){
+        var t2 = document.createElement('span'); t2.className='qty';
+        t2.textContent = fmtQty(it.qty, it.unit);
+        nm.appendChild(t2);
+      }
+      main.appendChild(nm);
+      if (it.from && it.from.length){
+        var fr = document.createElement('span'); fr.className='rowfrom';
+        fr.textContent = it.from.join('・');
+        main.appendChild(fr);
+      } else if (it.kind){
+        var kd = document.createElement('span'); kd.className='rowfrom';
+        kd.textContent = it.kind;
+        main.appendChild(kd);
+      }
+
+      var back = document.createElement('button');
+      back.type='button'; back.className='restore';
+      back.textContent = 'もどす';
+      back.setAttribute('aria-label', it.name + ' をリストに戻す');
+      back.addEventListener('click', function(){ unskip(it.key, it.name); });
+
+      row.appendChild(main); row.appendChild(back);
+      host.appendChild(row);
+    });
+  }
+
+  function unskip(k, name){
+    if (state.skipped[view.week]) delete state.skipped[view.week][k];
+    save(); render();
+    toast('「' + name + '」を戻しました', true);
   }
 
   function section(host, title, items, checked){
@@ -985,8 +1085,13 @@
       var main = document.createElement('span'); main.className='rowmain';
       var nm = document.createElement('span'); nm.className='rowname';
       var t1 = document.createElement('span'); t1.textContent = it.name;
-      var t2 = document.createElement('span'); t2.className='qty'; t2.textContent = fmtQty(it.qty, it.unit);
-      nm.appendChild(t1); nm.appendChild(t2);
+      nm.appendChild(t1);
+      // 手で足したものは分量を持たないので「適量」とは出さない
+      if (!it.extraId){
+        var t2 = document.createElement('span'); t2.className='qty';
+        t2.textContent = fmtQty(it.qty, it.unit);
+        nm.appendChild(t2);
+      }
       main.appendChild(nm);
       if (it.from && it.from.length){
         var fr = document.createElement('span'); fr.className='rowfrom';
@@ -1346,16 +1451,13 @@
     save(); render();
   }
 
+  // 消すのではなく「今週だけ外す」。一番下の「今週はずしたもの」から戻せる。
   function skipItem(it){
     snapshot();
-    if (it.extraId){
-      state.extras[view.week] = (state.extras[view.week]||[]).filter(function(e){ return e.id !== it.extraId; });
-    } else {
-      if (!state.skipped[view.week]) state.skipped[view.week] = {};
-      state.skipped[view.week][it.key] = true;
-    }
+    if (!state.skipped[view.week]) state.skipped[view.week] = {};
+    state.skipped[view.week][it.key] = true;
     save(); render();
-    toast('「' + it.name + '」を今週のリストから外しました');
+    toast('「' + it.name + '」を外しました（下から戻せます）');
   }
 
   function clearWeek(){
