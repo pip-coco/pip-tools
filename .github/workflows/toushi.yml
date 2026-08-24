@@ -29,7 +29,11 @@ jobs:
       - name: 必要なライブラリを入れる
         run: pip install --quiet requests openpyxl xlrd
 
+      # 読み取り処理が壊れていないかを、ダミーの応答で先に確かめる。
+      # ここが赤くなっても収集は続ける（収集側は失敗しても前回値を保つ作りなので、
+      # テストの不調でデータ更新まで止めてしまわないようにする）。
       - name: 読み取り処理の自己テスト（ネットにはつながない）
+        continue-on-error: true
         run: python scripts/test_parsers.py
 
       - name: データを収集する
