@@ -45,17 +45,20 @@
   .app[data-tab="shop"]  {--accent:#6E2E63;--accent-soft:#F3E9F1;}
   .app[data-tab="plan"]  {--accent:#2E4E8C;--accent-soft:#E6EAF6;}
   .app[data-tab="dish"]  {--accent:#2C6E49;--accent-soft:#E4F0E8;}
+  .app[data-tab="recipe"]{--accent:#2C6E49;--accent-soft:#E4F0E8;}
   .app[data-tab="pantry"]{--accent:#8F6511;--accent-soft:#FBF1DA;}
 
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]) .app[data-tab="shop"]  {--accent:#DA9ECC;--accent-soft:#2B2130;}
     :root:not([data-theme="light"]) .app[data-tab="plan"]  {--accent:#9AB4EC;--accent-soft:#1B2340;}
     :root:not([data-theme="light"]) .app[data-tab="dish"]  {--accent:#7BC99A;--accent-soft:#16301F;}
+    :root:not([data-theme="light"]) .app[data-tab="recipe"]{--accent:#7BC99A;--accent-soft:#16301F;}
     :root:not([data-theme="light"]) .app[data-tab="pantry"]{--accent:#F0CB63;--accent-soft:#352A11;}
   }
   :root[data-theme="dark"] .app[data-tab="shop"]  {--accent:#DA9ECC;--accent-soft:#2B2130;}
   :root[data-theme="dark"] .app[data-tab="plan"]  {--accent:#9AB4EC;--accent-soft:#1B2340;}
   :root[data-theme="dark"] .app[data-tab="dish"]  {--accent:#7BC99A;--accent-soft:#16301F;}
+  :root[data-theme="dark"] .app[data-tab="recipe"]{--accent:#7BC99A;--accent-soft:#16301F;}
   :root[data-theme="dark"] .app[data-tab="pantry"]{--accent:#F0CB63;--accent-soft:#352A11;}
 
   *{box-sizing:border-box;}
@@ -130,6 +133,93 @@
     font-weight:700;font-size:.98rem;letter-spacing:.06em;
     color:var(--accent);
   }
+
+  /* ===== レシピ詳細 ===== */
+  .detailbtn{
+    flex:none;align-self:center;margin-right:12px;
+    display:inline-flex;align-items:center;gap:6px;
+    min-height:36px;padding:0 13px;
+    border:1px solid var(--accent);border-radius:18px;
+    background:var(--accent-soft);color:var(--accent);
+    font:inherit;font-size:.82rem;cursor:pointer;white-space:nowrap;
+  }
+  .detailbtn .sn{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:.76rem;font-variant-numeric:tabular-nums;opacity:.7;
+  }
+  .detailbtn:hover{background:var(--accent);color:var(--surface);}
+  .detailbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+
+  /* 材料（詳細画面では読むだけ） */
+  .ingline{
+    display:flex;align-items:baseline;justify-content:space-between;gap:14px;
+    padding:11px 18px;border-bottom:1px solid var(--line);
+    font-size:1rem;
+  }
+  .ingline .q{
+    font-family:"IBM Plex Mono",monospace;font-size:.88rem;
+    font-variant-numeric:tabular-nums;color:var(--accent);white-space:nowrap;
+  }
+
+  /* 作り方（読むとき） */
+  .step{
+    display:grid;grid-template-columns:34px 1fr;gap:0 12px;
+    padding:14px 18px;border-bottom:1px solid var(--line);
+  }
+  .step .no{
+    font-family:"IBM Plex Mono",monospace;
+    font-size:.95rem;font-variant-numeric:tabular-nums;
+    color:var(--accent);font-weight:500;
+    padding-top:2px;
+  }
+  .step .tx{
+    font-size:1.05rem;line-height:1.85;
+    white-space:pre-wrap;word-break:break-word;
+  }
+
+  /* 作り方（書くとき） */
+  .stepedit{
+    display:grid;grid-template-columns:34px 1fr;gap:7px 12px;
+    padding:12px 18px;border-bottom:1px solid var(--line);
+  }
+  .stepedit .no{
+    font-family:"IBM Plex Mono",monospace;
+    font-size:.95rem;font-variant-numeric:tabular-nums;
+    color:var(--accent);padding-top:12px;
+  }
+  .stepedit textarea{
+    grid-column:2;
+    width:100%;min-height:82px;resize:vertical;
+    font:inherit;font-size:1rem;line-height:1.7;
+    padding:10px 12px;
+    border:1px solid var(--line-strong);border-radius:6px;
+    background:var(--surface);color:var(--fg);
+  }
+  .stepedit textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent);}
+  .stepctl{
+    grid-column:2;
+    display:flex;gap:7px;justify-content:flex-end;
+  }
+  .stepctl button{
+    min-width:46px;height:44px;
+    border:1px solid var(--line-strong);border-radius:7px;
+    background:var(--surface);color:var(--muted);
+    font-size:.95rem;cursor:pointer;
+  }
+  .stepctl button:hover:not(:disabled){border-color:var(--accent);color:var(--accent);}
+  .stepctl button:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+  .stepctl button:disabled{opacity:.35;cursor:default;}
+
+  .addstep{
+    margin:16px 18px 6px;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    width:calc(100% - 36px);min-height:52px;
+    border:1.5px dashed var(--line-strong);border-radius:9px;
+    background:transparent;color:var(--muted);
+    font:inherit;font-size:.98rem;cursor:pointer;
+  }
+  .addstep:hover{border-color:var(--accent);color:var(--accent);}
+  .addstep:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
 
   /* 常備品の画面 */
   .panetools{
@@ -785,6 +875,10 @@
     <button type="button" class="tabback" id="fromPantry" aria-label="もどる">‹</button>
     <span class="pantrytitle">常備品</span>
   </div>
+  <div class="tabs pantrybar" id="detailBar" hidden>
+    <button type="button" class="tabback" id="fromDetail" aria-label="レシピ一覧にもどる">‹</button>
+    <span class="pantrytitle" id="detailTitle"></span>
+  </div>
 
   <div class="toolbar">
     <button type="button" id="menuBtn" aria-label="メニューを開く" aria-expanded="false">⋯</button>
@@ -831,6 +925,12 @@
       </div>
       <h2 class="seclabel"><span>毎週の定番</span></h2>
       <div id="stapleBox"></div>
+    </div>
+
+    <!-- ============ レシピの詳細（材料と作り方） ============ -->
+    <div class="pane" id="pane-recipe" hidden>
+      <div class="panetools" id="recipeTools"></div>
+      <div id="recipeBody"></div>
     </div>
 
     <!-- ============ 常備品 ============ -->
@@ -954,7 +1054,7 @@
     return o;
   }
   function uid(){ return Math.random().toString(36).slice(2,9); }
-  function d(name, cat, ings){ return { id: uid(), name: name, cat: cat, ingredients: ings }; }
+  function d(name, cat, ings){ return { id: uid(), name: name, cat: cat, ingredients: ings, steps: [] }; }
 
   // 分類がまだ付いていない古いデータ用の対応表
   var LEGACY_CAT = {
@@ -967,7 +1067,8 @@
   // ---------- 保存・読み込み ----------
   var state = load();
   var view = { tab:'shop', prevTab:'shop', week: weekStartOf(new Date()),
-               openDish:null, dishFilter:'all', pantryEdit:false, pantryFilter:'all' };
+               openDish:null, dishFilter:'all', pantryEdit:false, pantryFilter:'all',
+               recipeId:null, recipeEdit:false };
   var undoSnap = null, toastTimer = null;
   var pickTarget = null, pickDate = null, pickCat = null, qtyItem = null;
 
@@ -998,9 +1099,10 @@
     raw.settings = raw.settings || {};
     if (typeof raw.settings.weekStartDay !== 'number') raw.settings.weekStartDay = 3;
 
-    // 分類が無いレシピに分類を付ける
+    // 分類が無いレシピに分類を付ける／作り方の入れものを用意する
     raw.dishes.forEach(function(dish){
       if (CATS.indexOf(dish.cat) < 0) dish.cat = LEGACY_CAT[dish.name] || 'その他';
+      if (!Array.isArray(dish.steps)) dish.steps = [];
     });
 
     if (!raw.plansByDate){
@@ -1167,8 +1269,10 @@
     document.getElementById('pane-shop').hidden = view.tab !== 'shop';
     document.getElementById('pane-dish').hidden = view.tab !== 'dish';
     document.getElementById('pane-pantry').hidden = view.tab !== 'pantry';
-    document.getElementById('mainTabs').hidden = view.tab === 'pantry';
+    document.getElementById('pane-recipe').hidden = view.tab !== 'recipe';
+    document.getElementById('mainTabs').hidden = (view.tab === 'pantry' || view.tab === 'recipe');
     document.getElementById('pantryBar').hidden = view.tab !== 'pantry';
+    document.getElementById('detailBar').hidden = view.tab !== 'recipe';
     document.getElementById('addForm').hidden = view.tab !== 'shop';
     document.getElementById('toast').classList.toggle('high', view.tab !== 'shop');
     Array.prototype.forEach.call(document.querySelectorAll('#mainTabs button[data-tab]'), function(b){
@@ -1179,6 +1283,7 @@
     if (view.tab === 'shop') renderShop();
     if (view.tab === 'dish') renderDishes();
     if (view.tab === 'pantry') renderPantry();
+    if (view.tab === 'recipe') renderRecipe();
   }
 
   function renderWeekLabels(){
@@ -1541,6 +1646,20 @@
       render();
     });
     row.appendChild(open);
+
+    var det = document.createElement('button');
+    det.type='button'; det.className='detailbtn';
+    var dl = document.createElement('span'); dl.textContent = '詳細';
+    det.appendChild(dl);
+    if (dish.steps && dish.steps.length){
+      var sn = document.createElement('span'); sn.className='sn';
+      sn.textContent = dish.steps.length;
+      det.appendChild(sn);
+    }
+    det.setAttribute('aria-label', dish.name + ' の作り方をひらく');
+    det.addEventListener('click', function(){ openRecipe(dish); });
+    row.appendChild(det);
+
     host.appendChild(row);
     if (view.openDish === dish.id) host.appendChild(editor(dish));
   }
@@ -1667,6 +1786,165 @@
       return;
     }
     showing.forEach(function(p){ pantryRow(host, p); });
+  }
+
+  // ================= レシピ詳細（材料と作り方） =================
+  function openRecipe(dish){
+    view.recipeId = dish.id;
+    view.recipeEdit = false;
+    view.tab = 'recipe';
+    render();
+  }
+
+  function renderRecipe(){
+    var dish = findDish(view.recipeId);
+    if (!dish){ view.tab = 'dish'; render(); return; }
+
+    document.getElementById('detailTitle').textContent = dish.name || '(名前なし)';
+
+    var tools = document.getElementById('recipeTools');
+    tools.textContent = '';
+    var info = document.createElement('span');
+    info.className = 'pantryinfo';
+    info.textContent = dish.steps.length
+      ? ('作り方 ' + dish.steps.length + '工程')
+      : '作り方はまだありません';
+    tools.appendChild(info);
+    var eb = document.createElement('button');
+    eb.type='button'; eb.className='ghost';
+    eb.textContent = view.recipeEdit ? '完了' : '編集';
+    eb.addEventListener('click', function(){ view.recipeEdit = !view.recipeEdit; render(); });
+    tools.appendChild(eb);
+
+    var host = document.getElementById('recipeBody');
+    host.textContent = '';
+
+    // --- 材料（ここでは読むだけ。変えるのはレシピ一覧の編集から） ---
+    var mh = document.createElement('h2');
+    mh.className = 'seclabel';
+    var mt = document.createElement('span'); mt.textContent = '材料';
+    var mn = document.createElement('span'); mn.className='n';
+    mn.textContent = dish.ingredients.length + '品';
+    mh.appendChild(mt); mh.appendChild(mn);
+    host.appendChild(mh);
+
+    dish.ingredients.forEach(function(ing){
+      if (!ing.name || !ing.name.trim()) return;
+      var line = document.createElement('div');
+      line.className = 'ingline';
+      var a = document.createElement('span'); a.textContent = ing.name;
+      var b = document.createElement('span'); b.className='q';
+      b.textContent = fmtQty(ing.qty, ing.unit);
+      line.appendChild(a); line.appendChild(b);
+      host.appendChild(line);
+    });
+
+    // --- 作り方 ---
+    var sh = document.createElement('h2');
+    sh.className = 'seclabel';
+    var st = document.createElement('span'); st.textContent = '作り方';
+    var sn = document.createElement('span'); sn.className='n';
+    sn.textContent = dish.steps.length ? (dish.steps.length + '工程') : '';
+    sh.appendChild(st); sh.appendChild(sn);
+    host.appendChild(sh);
+
+    if (view.recipeEdit){
+      dish.steps.forEach(function(txt, idx){
+        host.appendChild(stepEditRow(dish, idx));
+      });
+      var add = document.createElement('button');
+      add.type='button'; add.className='addstep';
+      add.textContent = '＋ 工程を追加';
+      add.addEventListener('click', function(){
+        dish.steps.push('');
+        save(); render();
+        // 追加した枠にすぐ書けるようにカーソルを移す
+        var boxes = document.querySelectorAll('#recipeBody .stepedit textarea');
+        var last = boxes[boxes.length - 1];
+        if (last){ last.focus(); last.scrollIntoView({ block:'center' }); }
+      });
+      host.appendChild(add);
+      return;
+    }
+
+    if (!dish.steps.length){
+      var em = document.createElement('div');
+      em.className = 'empty';
+      em.innerHTML = '<span class="mark">○</span>作り方はまだ登録されていません。<br>右上の「編集」から工程を書けます。';
+      host.appendChild(em);
+      return;
+    }
+
+    dish.steps.forEach(function(txt, idx){
+      var row = document.createElement('div');
+      row.className = 'step';
+      var no = document.createElement('span'); no.className='no'; no.textContent = (idx + 1);
+      var tx = document.createElement('span'); tx.className='tx';
+      tx.textContent = txt.trim() ? txt : '（未記入）';
+      row.appendChild(no); row.appendChild(tx);
+      host.appendChild(row);
+    });
+  }
+
+  function stepEditRow(dish, idx){
+    var box = document.createElement('div');
+    box.className = 'stepedit';
+
+    var no = document.createElement('span'); no.className='no'; no.textContent = (idx + 1);
+    box.appendChild(no);
+
+    var ta = document.createElement('textarea');
+    ta.value = dish.steps[idx];
+    ta.placeholder = '例：玉ねぎをうす切りにする';
+    ta.setAttribute('aria-label', (idx + 1) + '番目の工程');
+    ta.addEventListener('input', function(){
+      dish.steps[idx] = ta.value;
+      save();
+      grow(ta);
+    });
+    box.appendChild(ta);
+
+    var ctl = document.createElement('div');
+    ctl.className = 'stepctl';
+
+    var up = document.createElement('button');
+    up.type='button'; up.textContent='↑'; up.setAttribute('aria-label','ひとつ上に動かす');
+    up.disabled = (idx === 0);
+    up.addEventListener('click', function(){ moveStep(dish, idx, -1); });
+
+    var down = document.createElement('button');
+    down.type='button'; down.textContent='↓'; down.setAttribute('aria-label','ひとつ下に動かす');
+    down.disabled = (idx === dish.steps.length - 1);
+    down.addEventListener('click', function(){ moveStep(dish, idx, 1); });
+
+    var del = document.createElement('button');
+    del.type='button'; del.textContent='✕'; del.setAttribute('aria-label','この工程を消す');
+    del.addEventListener('click', function(){
+      snapshot();
+      dish.steps.splice(idx, 1);
+      save(); render();
+      toast((idx + 1) + '番目の工程を消しました');
+    });
+
+    ctl.appendChild(up); ctl.appendChild(down); ctl.appendChild(del);
+    box.appendChild(ctl);
+
+    setTimeout(function(){ grow(ta); }, 0);
+    return box;
+  }
+
+  function grow(ta){
+    ta.style.height = 'auto';
+    ta.style.height = Math.max(82, ta.scrollHeight + 2) + 'px';
+  }
+
+  function moveStep(dish, idx, dir){
+    var to = idx + dir;
+    if (to < 0 || to >= dish.steps.length) return;
+    var tmp = dish.steps[idx];
+    dish.steps[idx] = dish.steps[to];
+    dish.steps[to] = tmp;
+    save(); render();
   }
 
   // 編集モードの1行：名前＋✕／分類・数量・単位
@@ -2143,6 +2421,11 @@
   document.getElementById('toPantry').addEventListener('click', function(){
     view.prevTab = view.tab;
     view.tab = 'pantry';
+    render();
+  });
+  document.getElementById('fromDetail').addEventListener('click', function(){
+    view.recipeEdit = false;
+    view.tab = 'dish';
     render();
   });
   document.getElementById('fromPantry').addEventListener('click', function(){

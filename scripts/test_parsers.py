@@ -138,21 +138,35 @@ def make_shiller_xlsx():
     return buf.getvalue()
 
 
+# 旧形式(.xls / Excel 97-2003)版のダミー。実物の Shiller のファイルはこの形式。
+# 作るのに xlwt が要るので、作った結果を zlib圧縮＋base64 で埋め込んである。
+# こうしておけば、このテストは追加のライブラリなしで動く。
+# 中身は SHILLER_HEADER / SHILLER_ROWS と同じ。
+_SHILLER_XLS_B64 = (
+    "eNrtWEtoFHcY/83sbHZ3djfuxqiJQhiEpq2KGL140W0emyDUsN0UUvue7A46Os7K7EZNPahJcywU"
+    "evJxEb30ou1FLbZo60WokNIeCoXSpLm1pxYFkZj1+3/zSKIesqCiMt8y33y/7/l/zn92fpnKTp/7"
+    "du0MHqGdiGC+nkDTIp1EV8IHGZC9Xheif4/TVQ/ppaJEnCayKYpr6dsxMYdivmcg4xvlR+LA33R9"
+    "iEMYrNiG9hyph9ugS6INO4hLOEuaZrRzq1qYl5ivZH6JPb9n/hZrvmC+g3ynpfcxlRvcsN1bxe/J"
+    "69nWDJH3Csf8wZourMItsYqPfym5vlF0O6ZuvZiGDiWFC6B5GzBsw9GtabTSBF7A3boG3PF36g0t"
+    "1D9fvQTS31uqjz1B/5WsACdQ/5QX+CRSGFeERUGfXtPn8BfShNK8VFGsjBhOTRvaZ1qW4ZAf+RhJ"
+    "YKizoPVWDh7arBZUUpqHzbJhl9U+AnndsU17b1XNtwK9Fbs6etBw1IJjlgxtl102jqbdLGq/o5dq"
+    "ZsVeA7xdsfequ+ya4RjVmlYkqzYw1LWFshUN3XKD0x7w87dR9rGSZZZ0yxpTu8v7R6s1o6z2dhfy"
+    "tDjfLWpCylJ7jpaMapWRtsc0rLIqThR+AmWWPIHSvDNTxMtYwXKW92eGzpi5r//7dfdIIfcJa07w"
+    "qeOeTa+J4UQdJ0UEBTfDzwfKBWzgiI3MxznrOpbXMm+lXUX3zsIqT+ifYJ/P2dpJdbYx/ZZ7fZH8"
+    "BsmT/75ztWNyNvcmyRcHZj5rvfh77hzW01lZpnjxm8AmaZN0+pSg73L+XfKeY38yb3/smRaXM17f"
+    "6t4BvAIPoLKYZS48ZO7dUg+ZPcSYuMgfPxfJhCIBihBSAqQQigYoSqgpQE2EYgGKEYoHKE4oEaAE"
+    "ITVAKqFkgJKEUl7bI4+0/QcMsi6Lax+liG8dFfL/rLkfEVyOCj78sbAOxxD4uNZj3YJfZv9Z6n6S"
+    "qyhPqKKwz3Wu8tPhhSpiCWXFgSiycZUPuIrr41p/5irn+7mdQZXoY1XaWJfFTa7yzxG/iky2DrKJ"
+    "sVa50plF/RF+MS9ajGNvj9CuG4A3F0nslFtwWUwnnXQLpCKkkEIKKaSQQgppOSTx+wj4rUu8E0W9"
+    "N+aY913nAV3z4WeSV5aKqNCvRn9M87Dp7mCsofWzGlHJzyUtM8b/XihomKo7OIARbseBhtcv/YOS"
+    "Fvdn2YGZp7eFGq0/30g7n3H9hyr/J7A="
+)
+
+
 def make_shiller_xls():
-    """旧形式(.xls / Excel 97-2003)版のダミー。実物はこちらの形式。"""
-    import xlwt
-    wb = xlwt.Workbook()
-    ws = wb.add_sheet("Data")
-    ws.write(0, 0, "Robert Shiller")
-    for c, v in enumerate(SHILLER_HEADER):
-        ws.write(2, c, v)
-    for i, row in enumerate(SHILLER_ROWS):
-        for c, v in enumerate(row):
-            if v is not None:
-                ws.write(3 + i, c, v)
-    buf = io.BytesIO()
-    wb.save(buf)
-    return buf.getvalue()
+    import base64
+    import zlib
+    return zlib.decompress(base64.b64decode(_SHILLER_XLS_B64))
 
 
 SHILLER_PAGE = ('<html><body><a href="https://img1.wsimg.com/blobby/go/xxx/'
