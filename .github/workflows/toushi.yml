@@ -44,10 +44,10 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet -- data/toushi.json; then
+          git add data/toushi.json data/toushi-status.json
+          if git diff --cached --quiet; then
             echo "変更なし。コミットしません。"
           else
-            git add data/toushi.json
             git commit -m "投資データ更新 $(date -u '+%Y-%m-%d')"
             git push
           fi

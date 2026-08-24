@@ -51,6 +51,21 @@ CUTOFF = START.isoformat()
 DIAG = []          # 取得の記録（成功も失敗も全部）
 NOTES = []         # 画面に出す短いメモ
 
+STATUS_PATH = os.path.join(ROOT, "data", "toushi-status.json")
+
+
+def valid_date(s):
+    """使ってよい日付か確かめる。
+    ・ちゃんとした暦の日付か（2026-13-01 のようなものを弾く）
+    ・20年より古くないか
+    ・未来でないか（配布元が年末までの空行を持っていることがある）
+    """
+    try:
+        d = dt.date.fromisoformat(s)
+    except (ValueError, TypeError):
+        return False
+    return START <= d <= TODAY
+
 
 def diag(line):
     print("    " + line, file=sys.stderr)
@@ -464,6 +479,8 @@ def fetch_bls_cpi():
                 try:
                     year = int(row["year"])
                     month = int(row["period"].replace("M", ""))
+                    if not 1 <= month <= 12:
+                        continue          # M13（年平均）は月次ではないので使わない
                     out["%04d-%02d-01" % (year, month)] = float(row["value"])
                 except (ValueError, KeyError):
                     continue
@@ -622,11 +639,17 @@ def load_previous():
 
 
 def merge(previous, fresh):
-    merged = {}
+    """前回値に今回ぶんを重ね、おかしな日付をここで一括して落とす。
+    取得先ごとに気をつけるより、最後に1か所で弾くほうが漏れがない。"""
+    merged, dropped = {}, 0
     for key in set(list(previous.keys()) + list(fresh.keys())):
         base = dict(previous.get(key, {}))
         base.update(fresh.get(key, {}))
-        merged[key] = {d: v for d, v in base.items() if d >= CUTOFF}
+        kept = {d: v for d, v in base.items() if valid_date(d)}
+        dropped += len(base) - len(kept)
+        merged[key] = kept
+    if dropped:
+        diag("おかしな日付を %d 点ぶん落とした（未来日・存在しない日付など）" % dropped)
     return merged
 
 
@@ -727,24 +750,54 @@ def main():
     if empty:
         NOTES.append("未取得: " + " / ".join(empty))
 
+    stamp = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+
+    # 系列ごとの「実際に値がある点の数」と「直近5点」。
+    # 前方補完のせいで画面上は値があるように見えても、
+    # 中身が1点しかない、といった状態をここで見抜けるようにする。
+    health = {}
+    for key in META:
+        col = table.get(key, {})
+        recent = [[d, col[d]] for d in sorted(col)[-5:]]
+        health[key] = {"points": len(col), "asof": asof[key], "recent": recent}
+
     payload = {
-        "updated": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+        # 先頭に診断を置く。ファイルが大きくなっても、頭を読めば状態がわかるようにするため。
+        "updated": stamp,
         "years": YEARS,
+        "asof": asof,
+        "notes": NOTES,
+        "meta": META,
         "dates": dates,
         "series": series,
-        "asof": asof,
-        "meta": META,
-        "notes": NOTES,
-        "diag": DIAG,
     }
     os.makedirs(os.path.dirname(OUT_PATH), exist_ok=True)
     with open(OUT_PATH, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
 
+    # 診断だけの小さなファイル。数値の本体を含まないので軽く、まるごと読める。
+    status = {
+        "updated": stamp,
+        "dates_count": len(dates),
+        "dates_first": dates[0],
+        "dates_last": dates[-1],
+        "elapsed_sec": round(time.time() - t0),
+        "size_kb": round(os.path.getsize(OUT_PATH) / 1024.0),
+        "missing": empty,
+        "notes": NOTES,
+        "health": health,
+        "diag": DIAG,
+    }
+    with open(STATUS_PATH, "w", encoding="utf-8") as f:
+        json.dump(status, f, ensure_ascii=False, indent=1)
+
     print("\n" + "=" * 56)
-    print("日付 %d 点 / 系列 %d 本中 %d 本にデータあり / %.0f KB / %.0f 秒"
-          % (len(dates), len(META), len(filled),
-             os.path.getsize(OUT_PATH) / 1024.0, time.time() - t0))
+    print("日付 %d 点 (%s 〜 %s)" % (len(dates), dates[0], dates[-1]))
+    print("系列 %d 本中 %d 本にデータあり / %.0f KB / %.0f 秒"
+          % (len(META), len(filled), os.path.getsize(OUT_PATH) / 1024.0, time.time() - t0))
+    thin = [META[k]["label"] for k in META if 0 < health[k]["points"] < 12]
+    if thin:
+        print("点が少なく判定を出せない系列: " + " / ".join(thin))
     if empty:
         print("取れなかったもの: " + " / ".join(empty))
     print("=" * 56)

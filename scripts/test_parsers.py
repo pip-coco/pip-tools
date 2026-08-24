@@ -102,6 +102,7 @@ BLS_JSON = json.dumps({
     "Results": {"series": [{"seriesID": "CUUR0000SA0", "data": [
         {"year": "2026", "period": "M07", "value": "320.5"},
         {"year": "2025", "period": "M07", "value": "311.6"},
+        {"year": "2025", "period": "M13", "value": "315.0"},   # M13 は年平均。使ってはいけない
     ]}]},
 })
 
@@ -270,6 +271,20 @@ def main():
     yoy = C.to_yoy(cpi)
     check("前年比を計算できる", abs(yoy.get("2026-07-01", 0) - 2.86) < 0.02,
           str(yoy.get("2026-07-01")))
+    check("M13（年平均）を月次に混ぜない",
+          not any(k.split("-")[1] == "13" for k in cpi), str(sorted(cpi)))
+
+    print("\n[6b] おかしな日付を弾く")
+    today = C.TODAY.isoformat()
+    future = (C.TODAY + dt.timedelta(days=100)).isoformat()
+    old = (C.TODAY - dt.timedelta(days=365 * 30)).isoformat()
+    check("今日は通す", C.valid_date(today))
+    check("未来の日付を弾く（2026-12-01 の件）", not C.valid_date(future), future)
+    check("20年より古い日付を弾く", not C.valid_date(old), old)
+    check("存在しない日付を弾く", not C.valid_date("2026-13-01"))
+    check("形式が違うものを弾く", not C.valid_date("R8.8.21"))
+    merged = C.merge({}, {"nikkei": {today: 1.0, future: 2.0, "2026-13-01": 3.0}})
+    check("merge がまとめて落とす", list(merged["nikkei"]) == [today], str(merged["nikkei"]))
 
     print("\n[7] ボット判定・タイムアウトの検知")
     check("ボット判定ページを見抜く", C.looks_like_botwall(BOTWALL))
