@@ -192,13 +192,26 @@ def graft_older(main, older):
     return out
 
 
-def calibrate(real, proxy, recent=260):
+# TOPIX の実測値（倍率の基準点）。
+# 2026-08-23 に Yahoo!ファイナンス（998405.T の時系列ページ）から取得した終値。
+# Yahoo の ^TPX が 2026-09-28 に 404（銘柄なし）になり、本物の TOPIX が
+# 1点も取れない日でも ETF からの換算が成り立つように、ここに固定で持っておく。
+TOPIX_ANCHORS = {
+    "2026-08-17": 4184.11,
+    "2026-08-18": 4140.22,
+    "2026-08-19": 4012.31,
+    "2026-08-20": 4059.73,
+    "2026-08-21": 4067.29,
+}
+
+
+def calibrate(real, proxy, recent=260, minimum=3):
     """proxy（例: TOPIX連動ETFの価格）を real（例: TOPIX）の水準に合わせる倍率。
     同じ日に両方ある点の比の中央値。配当の払い出しで比が季節的に揺れるため、
-    直近1年ぶん程度をならして使う。"""
+    重なりが多ければ直近1年ぶん程度をならして使う。"""
     both = sorted(d for d in real if d in proxy and proxy[d])
     both = both[-recent:]
-    if len(both) < 20:
+    if len(both) < minimum:
         return None, len(both)
     ratios = sorted(real[d] / proxy[d] for d in both)
     return ratios[len(ratios) // 2], len(both)
@@ -1036,8 +1049,10 @@ def lookup(col, tol_days):
 
 def splice_topix(real, etf, previous_real):
     """本物のTOPIXがない日を、TOPIX連動ETFの価格×倍率で埋める。
-    倍率は本物と重なっている日の比から決める（今回ぶんが足りなければ前回の保存値も使う）。"""
-    ref = dict(previous_real)
+    倍率は本物と重なっている日の比から決める。
+    基準にするのは、固定の実測値（TOPIX_ANCHORS）＋前回の保存値＋今回取れた本物。"""
+    ref = dict(TOPIX_ANCHORS)
+    ref.update(previous_real)
     ref.update(real)
     k, n = calibrate(ref, etf)
     if k is None:
@@ -1051,7 +1066,7 @@ def splice_topix(real, etf, previous_real):
         if near(d) is None:
             filled[d] = round(v * k, 2)
     out = dict(filled)
-    out.update(real)
+    out.update(ref)                                  # 実測値（固定の基準点・前回分・今回分）は必ず残す
     if filled:
         diag("  TOPIX: ETFから %d点 補った（%s、倍率 %.4f を %d点で較正）"
              % (len(filled), span(filled), k, n))
@@ -1098,11 +1113,16 @@ def main():
 
     # TOPIX は本物と ETF をつなぐ。倍率の較正には前回保存した本物も使う
     etf = fresh.pop("_topix_etf", {})
-    topix, filled_span = splice_topix(fresh.get("topix", {}), etf, previous.get("topix", {}))
+    real_topix = fresh.get("topix", {})
+    topix, filled_span = splice_topix(real_topix, etf, previous.get("topix", {}))
     fresh["topix"] = topix
-    if filled_span:
+    if filled_span and real_topix:
         META["topix"]["source"] = ("Yahoo Finance ^TPX（%s〜%s は TOPIX連動ETF 1306 から換算）"
                                    % (filled_span[0][:7], filled_span[1][:7]))
+    elif filled_span:
+        # 本物の TOPIX が今回1点も取れなかった日。ほぼ全部が換算値であることを正直に書く
+        META["topix"]["source"] = ("TOPIX連動ETF 1306 から換算（本物の TOPIX の取得先が不通のため。"
+                                   "倍率は実測値で較正）")
 
     # 派生指標は毎回計算し直すので、前回ぶんは持ち越さない
     for k in DERIVED:

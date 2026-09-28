@@ -373,6 +373,8 @@ def fake_get(url, timeout=25, tries=2, **kw):
 
 def main():
     C.get = fake_get
+    # 本物の基準点（2026年8月の実測値）はダミーの世界の値と合わないので、ダミーに合わせたものに差し替える
+    C.TOPIX_ANCHORS = {d: true_topix(dt.date(2026, 8, int(d[-2:]))) for d in C.TOPIX_ANCHORS}
     C.time.sleep = lambda *_a, **_k: None
 
     print("\n[1] Yahoo Finance（月足・週足・日足の日付の付け方）")
@@ -504,10 +506,25 @@ def main():
           "中央値 %.2f%% / 最大 %.2f%%" % (errs[len(errs) // 2] * 100, errs[-1] * 100))
     STATE["yahoo_tpx_ok"] = False
     real_none = C.fetch_yahoo(["^TPX", "998405.T", "^TOPX"])
+    saved_anchors = C.TOPIX_ANCHORS
+    C.TOPIX_ANCHORS = {}
     tp2, _ = C.splice_topix(real_none, etf, {})
-    check("本物が今回取れず前回の保存もなければ補わない（倍率を決められない）", tp2 == {})
+    check("本物も基準点も前回分もなければ補わない（倍率を決められない）", tp2 == {})
     tp3, _ = C.splice_topix(real_none, etf, real)
     check("前回保存した本物で較正して補える", len(tp3) > 100, "%d点" % len(tp3))
+
+    # 2026-09-28 に実際に起きたこと：Yahoo の ^TPX が404、前回の保存もほぼ空。
+    # 固定の基準点（実測5日分）だけで較正して、2001年まで補えること
+    days5 = sorted(d for d in etf if d <= TODAY.isoformat())[-30:-25]
+    C.TOPIX_ANCHORS = {d: true_topix(dt.date.fromisoformat(d)) for d in days5}
+    tp4, _ = C.splice_topix(real_none, etf, {})
+    check("基準点5日分だけで2001年まで補える", tp4 and min(tp4) <= "2001-07-31",
+          min(tp4) if tp4 else "なし")
+    errs4 = sorted(abs(tp4[d] / true_topix(dt.date.fromisoformat(d)) - 1) for d in tp4)
+    check("基準点だけで較正しても誤差は中央値2%未満", errs4[len(errs4) // 2] < 0.02,
+          "中央値 %.2f%% / 最大 %.2f%%" % (errs4[len(errs4) // 2] * 100, errs4[-1] * 100))
+    check("基準点そのものは本物の値のまま残す", all(tp4[d] == C.TOPIX_ANCHORS[d] for d in days5))
+    C.TOPIX_ANCHORS = saved_anchors
     STATE["yahoo_tpx_ok"] = True
 
     print("\n[11] 間引き")
