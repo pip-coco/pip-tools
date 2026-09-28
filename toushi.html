@@ -12,6 +12,7 @@
   --line:#e3e6ea; --accent:#2563eb;
   --hot:#d92626; --warm:#e07a1f; --mid:#8b8f96; --cool:#0e8fa8; --cold:#2563eb;
   --up:#c62828; --down:#1565c0;   /* 日本式：上げ=赤 下げ=青 */
+  --on-accent:#ffffff;
   --shadow:0 1px 2px rgba(0,0,0,.06);
 }
 @media (prefers-color-scheme: dark){
@@ -20,6 +21,7 @@
     --line:#31343b; --accent:#6ea8fe;
     --hot:#ff6b6b; --warm:#ffa657; --mid:#9aa0aa; --cool:#4dd0e1; --cold:#6ea8fe;
     --up:#ff7b72; --down:#79b8ff;
+    --on-accent:#0b1220;
     --shadow:none;
   }
 }
@@ -126,6 +128,25 @@ section > h2 span{font-size:11px;font-weight:400;letter-spacing:0}
   border-radius:50%; background:var(--bg); border:3px solid var(--fg);
 }
 .ends{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--muted);margin-top:7px;font-variant-numeric:tabular-nums}
+.ends i{font-style:normal;opacity:.75;margin-left:4px;font-size:11px}
+/* バーの上の「下から何%」と、どの期間での話か */
+.where{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
+  margin-bottom:7px;font-size:12px;color:var(--muted)}
+.where b{font-size:14px;color:var(--fg);font-weight:700;font-variant-numeric:tabular-nums}
+/* 判定を出さない理由など、小さな注記 */
+.why{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5}
+.chg small{display:block;font-size:10px;font-weight:500;color:var(--muted);text-align:right;margin-top:1px}
+
+/* ===== 期間の切り替え ===== */
+.periods{display:flex;gap:6px;margin:14px 0 0;overflow-x:auto;scrollbar-width:none}
+.periods::-webkit-scrollbar{display:none}
+.per{
+  flex:1 0 auto; min-height:44px; min-width:52px; padding:0 10px;
+  border:1px solid var(--line); background:var(--card); color:var(--muted);
+  border-radius:999px; font:600 14px/1 inherit; cursor:pointer; white-space:nowrap;
+}
+.per[aria-checked="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.per:active{opacity:.6}
 .ends .mid{font-weight:600;color:var(--fg)}
 /* 展開できることを示す小さな印 */
 .caret{grid-column:2;grid-row:1;justify-self:end;color:var(--muted);font-size:12px;transition:transform .15s}
@@ -217,33 +238,133 @@ function fmt(v, unit){
   return v.toLocaleString("ja-JP", {minimumFractionDigits:d, maximumFractionDigits:d});
 }
 
-/* ---------- 系列から「値のある点」だけ取り出す ---------- */
-function points(key){
-  var vals = DATA.series[key] || [], out = [];
-  for(var i=0;i<vals.length;i++){
-    if(vals[i] !== null && vals[i] !== undefined){
-      out.push({d: DATA.dates[i], v: vals[i]});
+var DAY = 86400000;
+
+/* 「2026年9月」のような短い日付 */
+function ym(ms){
+  var d = new Date(ms);
+  return d.getUTCFullYear() + "年" + (d.getUTCMonth()+1) + "月";
+}
+function yr(ms){ return new Date(ms).getUTCFullYear() + "年"; }
+
+/* ---------- 表示期間 ----------
+   既定は「全期間」。記録はずっと積み上げていくので、長く見たいときほど価値が出る。 */
+var PERIODS = [
+  {id:"1y",  t:"1年",   years:1},
+  {id:"5y",  t:"5年",   years:5},
+  {id:"10y", t:"10年",  years:10},
+  {id:"20y", t:"20年",  years:20},
+  {id:"all", t:"全期間", years:null}
+];
+function currentPeriod(){
+  for(var i=0;i<PERIODS.length;i++) if(PERIODS[i].id === LOCAL.period) return PERIODS[i];
+  return PERIODS[PERIODS.length-1];              /* 既定は全期間 */
+}
+
+/* ---------- 系列から実測点を取り出す ----------
+   第2版のデータは系列ごとに {t:[20260925,...], v:[...]}。
+   第1版（共通の日付軸＋前の値で埋めたもの）が来ても読めるようにしておく。 */
+var CACHE = {};
+function allPoints(key){
+  if(CACHE[key]) return CACHE[key];
+  var out = [];
+  var s = DATA.series[key];
+  if(DATA.version === 2){
+    if(s && s.t){
+      for(var i=0;i<s.t.length;i++){
+        if(s.v[i] === null || s.v[i] === undefined) continue;
+        var n = s.t[i], y = Math.floor(n/10000), m = Math.floor(n/100)%100, d = n%100;
+        out.push({ms: Date.UTC(y, m-1, d), v: s.v[i]});
+      }
+    }
+  }else if(s && DATA.dates){
+    var prev = null;
+    for(var j=0;j<s.length;j++){
+      if(s[j] === null || s[j] === undefined || s[j] === prev) continue;   /* 埋めた値は飛ばす */
+      var p = DATA.dates[j].split("-");
+      out.push({ms: Date.UTC(+p[0], +p[1]-1, +p[2]), v: s[j]});
+      prev = s[j];
     }
   }
+  CACHE[key] = out;
   return out;
 }
 
-/* ---------- 20年レンジの中での位置（パーセンタイル） ---------- */
-function percentile(pts){
-  if(pts.length < 12) return null;                 // 履歴が短いうちは判定しない
-  var cur = pts[pts.length-1].v;
-  var below = 0;
-  for(var i=0;i<pts.length;i++) if(pts[i].v < cur) below++;
-  return below / (pts.length - 1) * 100;
+/* 選んだ期間に入る点。期間は「今日から何年さかのぼるか」 */
+function windowOf(key){
+  var pts = allPoints(key), per = currentPeriod();
+  if(!pts.length) return {pts:[], from:null, days:0};
+  var today = Date.now();
+  if(per.years === null){
+    return {pts:pts, from:pts[0].ms, days:(pts[pts.length-1].ms - pts[0].ms)/DAY, all:true};
+  }
+  var from = today - per.years * 365.25 * DAY;
+  var w = [];
+  for(var i=0;i<pts.length;i++) if(pts[i].ms >= from) w.push(pts[i]);
+  return {pts:w, from:from, days:per.years * 365.25, all:false};
 }
 
-/* ---------- パーセンタイルを言葉と色に変える ----------
+/* ---------- 期間内を時間的に均等に間引く ----------
+   保存データは「直近は毎日・昔は月1点」なので、そのまま数えると
+   最近の値ばかりが重くなる。3年以下なら週1点、それより長ければ月1点にそろえる。 */
+function samples(pts, spanDays){
+  var weekly = spanDays <= 3 * 366, seen = {}, keys = [];
+  for(var i=0;i<pts.length;i++){
+    var k;
+    if(weekly){ k = Math.floor((pts[i].ms / DAY + 3) / 7); }
+    else{ var d = new Date(pts[i].ms); k = d.getUTCFullYear()*12 + d.getUTCMonth(); }
+    if(!(k in seen)) keys.push(k);
+    seen[k] = pts[i].v;                            /* その週／月の最後の値 */
+  }
+  return keys.map(function(k){ return seen[k]; });
+}
+
+/* ---------- 期間の中での位置と、判定してよいかどうか ---------- */
+function position(key){
+  var w = windowOf(key), pts = w.pts;
+  var res = {pts:pts, from:w.from, pct:null, judgeable:false, reason:"", lo:null, hi:null};
+  if(!pts.length){ res.reason = "この期間の記録がありません"; return res; }
+
+  var first = pts[0].ms, last = pts[pts.length-1].ms;
+  var spanDays = (last - first) / DAY;
+  var lo = pts[0], hi = pts[0];
+  for(var i=0;i<pts.length;i++){
+    if(pts[i].v < lo.v) lo = pts[i];
+    if(pts[i].v > hi.v) hi = pts[i];
+  }
+  res.lo = lo; res.hi = hi; res.first = first;
+
+  /* 「記録が短い」かどうかは、期間内ではなく系列全体で見る。
+     （月1回の指標は、1年の窓の中では11ヶ月ぶんにしかならないため） */
+  var all = allPoints(key);
+  if((all[all.length-1].ms - all[0].ms) / DAY < 365){
+    res.reason = "記録が1年に満たないため位置は出せません（" + ym(all[0].ms) + "〜）";
+    return res;
+  }
+  var smp = samples(pts, w.all ? Math.max(spanDays, 1) : w.days);
+  if(smp.length < 10){
+    res.reason = "この期間の点が少なすぎて位置は出せません";
+    return res;
+  }
+  var cur = pts[pts.length-1].v, below = 0;
+  for(var j=0;j<smp.length;j++) if(smp[j] < cur) below++;
+  res.pct = below / Math.max(smp.length - 1, 1) * 100;
+  res.pct = Math.min(100, Math.max(0, res.pct));
+  /* 選んだ期間の7割以上に記録があるときだけ、割安・割高の札を出す */
+  var coverage = w.all ? 1 : spanDays / w.days;
+  res.judgeable = coverage >= 0.7;
+  if(!res.judgeable) res.reason = "この期間の一部（" + yr(first) + "〜）しか記録がないので、札は出しません";
+  return res;
+}
+
+/* ---------- 位置を言葉と色に変える ----------
    expensiveHigh が true  : 値が高いほど割高
                    false : 値が高いほど割安（イールドスプレッド）
                    null  : 判定しない（水準を見るだけ）                    */
-function judge(pct, expensiveHigh){
-  if(pct === null || expensiveHigh === null || expensiveHigh === undefined) return null;
-  var p = expensiveHigh ? pct : 100 - pct;         // 「割高度」に揃える
+function judge(pos, expensiveHigh){
+  if(!pos || pos.pct === null || !pos.judgeable) return null;
+  if(expensiveHigh === null || expensiveHigh === undefined) return null;
+  var p = expensiveHigh ? pos.pct : 100 - pos.pct;  /* 「割高度」に揃える */
   if(p >= 85) return {t:"割高",     c:"var(--hot)"};
   if(p >= 65) return {t:"やや割高", c:"var(--warm)"};
   if(p >= 35) return {t:"中立",     c:"var(--mid)"};
@@ -251,49 +372,82 @@ function judge(pct, expensiveHigh){
   return           {t:"割安",     c:"var(--cold)"};
 }
 
-/* ---------- 直近の変化（1つ前の点との差） ---------- */
-function change(pts){
+/* ---------- 直近の変化（1つ前の実測点との差） ---------- */
+function change(key){
+  var pts = allPoints(key);
   if(pts.length < 2) return null;
-  var a = pts[pts.length-2].v, b = pts[pts.length-1].v;
-  if(!a) return null;
-  return (b - a) / Math.abs(a) * 100;
+  var a = pts[pts.length-2], b = pts[pts.length-1];
+  if(!a.v) return null;
+  var gap = (b.ms - a.ms) / DAY;
+  var label = gap <= 4 ? "前日比" : gap <= 10 ? "前週比" : gap <= 40 ? "前月比" : "前回比";
+  return {pct:(b.v - a.v) / Math.abs(a.v) * 100, label:label};
 }
 
-/* ---------- 20年チャート（SVGを手で組み立てる） ---------- */
-function chartSVG(pts){
-  if(pts.length < 2) return '<div class="meta">履歴がまだありません。</div>';
-  var W = 300, H = 110, PADL = 4, PADR = 4, PADT = 8, PADB = 16;
+/* ---------- 目盛りの位置を決める ---------- */
+function ticksFor(from, to){
+  var spanDays = (to - from) / DAY, out = [];
+  var a = new Date(from), b = new Date(to);
+  if(spanDays <= 400){
+    var step = spanDays <= 120 ? 1 : 3;           /* 月ごと、または3ヶ月ごと */
+    var y = a.getUTCFullYear(), m = a.getUTCMonth() + 1;
+    while(true){
+      if(m > 11){ y++; m -= 12; }
+      var ms = Date.UTC(y, m, 1);
+      if(ms > to) break;
+      if(m % step === 0) out.push({ms:ms, t: m === 0 ? String(y) : (m+1) + "月"});
+      m++;
+    }
+    return out;
+  }
+  var years = spanDays / 365.25;
+  var steps = [1, 2, 5, 10, 20, 25, 50], st = 50;
+  for(var i=0;i<steps.length;i++){ if(years / steps[i] <= 6){ st = steps[i]; break; } }
+  for(var yy = Math.ceil(a.getUTCFullYear() / st) * st; yy <= b.getUTCFullYear(); yy += st){
+    var ms2 = Date.UTC(yy, 0, 1);
+    if(ms2 >= from && ms2 <= to) out.push({ms:ms2, t:String(yy)});
+  }
+  return out;
+}
+
+/* ---------- チャート（SVGを手で組み立てる） ----------
+   横軸は「点の順番」ではなく「時間」で置く。
+   （保存データは直近ほど細かいので、順番で置くと直近が不自然に引き伸ばされる）
+   値の幅が10倍を超える正の系列は対数目盛にする（150年の株価などが平らに潰れないように）。 */
+function chartSVG(pts, from){
+  if(pts.length < 2) return '<div class="meta">この期間の記録がまだありません。</div>';
+  var W = 300, H = 120, PADL = 4, PADR = 4, PADT = 10, PADB = 16;
   var lo = Infinity, hi = -Infinity;
   for(var i=0;i<pts.length;i++){ lo = Math.min(lo, pts[i].v); hi = Math.max(hi, pts[i].v); }
-  if(hi === lo){ hi = lo + 1; }
+  var logScale = lo > 0 && hi / lo >= 10;
+  var f = logScale ? Math.log : function(v){ return v; };
+  var flo = f(lo), fhi = f(hi);
+  if(fhi === flo) fhi = flo + 1;
+  var x0 = Math.min(from || pts[0].ms, pts[0].ms), x1 = pts[pts.length-1].ms;
+  if(x1 === x0) x1 = x0 + DAY;
   var iw = W - PADL - PADR, ih = H - PADT - PADB;
-  var xs = function(i){ return PADL + iw * i / (pts.length - 1); };
-  var ys = function(v){ return PADT + ih * (1 - (v - lo) / (hi - lo)); };
+  var xs = function(ms){ return PADL + iw * (ms - x0) / (x1 - x0); };
+  var ys = function(v){ return PADT + ih * (1 - (f(v) - flo) / (fhi - flo)); };
 
-  var line = "", area = "M" + PADL + "," + (PADT + ih);
+  var line = "", area = "";
   for(var j=0;j<pts.length;j++){
-    var x = xs(j).toFixed(1), y = ys(pts[j].v).toFixed(1);
+    var x = xs(pts[j].ms).toFixed(1), y = ys(pts[j].v).toFixed(1);
     line += (j ? "L" : "M") + x + "," + y;
-    area += "L" + x + "," + y;
+    area += (j ? "L" : "M" + x + "," + (PADT + ih) + "L") + x + "," + y;
   }
-  area += "L" + (PADL + iw).toFixed(1) + "," + (PADT + ih) + "Z";
+  area += "L" + xs(pts[pts.length-1].ms).toFixed(1) + "," + (PADT + ih) + "Z";
 
-  /* 横軸に5年おきくらいの年を置く */
-  var ticks = "", lastYear = "";
-  for(var k=0;k<pts.length;k++){
-    var yr = pts[k].d.slice(0,4);
-    if(yr !== lastYear && (yr % 5 === 0 || k === pts.length-1)){
-      lastYear = yr;
-      var tx = xs(k);
-      if(tx > 12 && tx < W - 12){
-        ticks += '<line class="gl" x1="'+tx.toFixed(1)+'" y1="'+PADT+'" x2="'+tx.toFixed(1)+'" y2="'+(PADT+ih)+'"/>'
-              +  '<text x="'+tx.toFixed(1)+'" y="'+(H-4)+'" text-anchor="middle">'+yr+'</text>';
-      }
-    }
+  var ticks = "", tk = ticksFor(x0, x1);
+  for(var k=0;k<tk.length;k++){
+    var tx = xs(tk[k].ms);
+    if(tx < 14 || tx > W - 14) continue;
+    ticks += '<line class="gl" x1="'+tx.toFixed(1)+'" y1="'+PADT+'" x2="'+tx.toFixed(1)+'" y2="'+(PADT+ih)+'"/>'
+          +  '<text x="'+tx.toFixed(1)+'" y="'+(H-4)+'" text-anchor="middle">'+tk[k].t+'</text>';
   }
-  var lx = xs(pts.length-1).toFixed(1), ly = ys(pts[pts.length-1].v).toFixed(1);
+  /* 右上は最新の点が来るので、注記は左上に置く */
+  var note = logScale ? '<text x="'+(PADL+2)+'" y="9" text-anchor="start">対数目盛</text>' : "";
+  var lx = xs(pts[pts.length-1].ms).toFixed(1), ly = ys(pts[pts.length-1].v).toFixed(1);
   return '<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" aria-hidden="true">'
-       + ticks
+       + ticks + note
        + '<path class="ar" d="'+area+'"/>'
        + '<path class="ln" d="'+line+'" vector-effect="non-scaling-stroke"/>'
        + '<circle class="dot" cx="'+lx+'" cy="'+ly+'" r="2.6"/>'
@@ -303,58 +457,57 @@ function chartSVG(pts){
 /* ---------- カード1枚を作る ---------- */
 function cardHTML(key){
   var m = DATA.meta[key];
-  var pts = points(key);
-  if(!pts.length){
+  var all = allPoints(key);
+  if(!all.length){
     return '<div class="card"><div class="head">'
          + '<div class="name">'+m.label+'</div>'
          + '<div class="val">—<span class="u"> 取得できず</span></div>'
          + '</div></div>';
   }
-  var cur = pts[pts.length-1].v;
-  var pct = percentile(pts);
-  var jd  = judge(pct, m.expensive_high);
-  var chg = change(pts);
-  var lo = pts[0].v, hi = pts[0].v;
-  for(var i=0;i<pts.length;i++){ lo = Math.min(lo,pts[i].v); hi = Math.max(hi,pts[i].v); }
+  var cur = all[all.length-1].v;
+  var pos = position(key);
+  var jd  = judge(pos, m.expensive_high);
+  var chg = change(key);
   var isOpen = !!OPEN[key];
+  var per = currentPeriod();
 
   var h = '<div class="card'+(isOpen?" open":"")+'" data-key="'+key+'">';
-
   h += '<div class="head" role="button" tabindex="0">';
   h +=   '<div class="name">'+m.label+'</div>';
   if(jd) h += '<div class="badge" style="color:'+jd.c+'">'+jd.t+'</div>';
   else   h += '<div class="caret">▾</div>';
   h +=   '<div class="val">'+fmt(cur, m.unit)+'<span class="u">'+m.unit+'</span></div>';
-  if(chg !== null && Math.abs(chg) >= 0.005){
-    var cls = chg > 0 ? "up" : "down";
-    h += '<div class="chg '+cls+'">'+(chg>0?"+":"")+chg.toFixed(2)+'%</div>';
+  if(chg !== null && Math.abs(chg.pct) >= 0.005){
+    h += '<div class="chg '+(chg.pct > 0 ? "up" : "down")+'">'
+      +  (chg.pct>0?"+":"")+chg.pct.toFixed(2)+'%<small>'+chg.label+'</small></div>';
   }else{
     h += '<div class="chg flat">—</div>';
   }
   h += '</div>';
 
-  /* 20年レンジのどこにいるか */
-  if(pct !== null){
-    var trackCls = (m.expensive_high === null || m.expensive_high === undefined)
+  /* 選んだ期間の中のどこにいるか */
+  if(pos.pct !== null){
+    var trackCls = (m.expensive_high === null || m.expensive_high === undefined || !pos.judgeable)
                  ? "track flat" : (m.expensive_high ? "track" : "track rev");
-    /* まるい印が端で欠けないように、内側 7px ぶんを差し引いて置く */
-    var pinPos = 'calc(7px + (100% - 14px) * ' + (pct/100).toFixed(4) + ')';
+    var pinPos = 'calc(7px + (100% - 14px) * ' + (pos.pct/100).toFixed(4) + ')';
+    var scope = per.years === null ? "全期間" : "直近" + per.t;
     h += '<div class="range">'
+      +    '<div class="where"><b>下から '+Math.round(pos.pct)+'%</b>'
+      +      '<span>'+scope+'（'+yr(pos.first)+'〜）</span></div>'
       +    '<div class="'+trackCls+'"><div class="pin" style="left:'+pinPos+'"></div></div>'
-      +    '<div class="ends"><span>最安 '+fmt(lo,m.unit)+'</span>'
-      +      '<span class="mid">'+DATA.years+'年で下から '+Math.round(pct)+'%</span>'
-      +      '<span>最高 '+fmt(hi,m.unit)+'</span></div>'
+      +    '<div class="ends"><span>最安 '+fmt(pos.lo.v,m.unit)+'<i>'+yr(pos.lo.ms)+'</i></span>'
+      +      '<span>最高 '+fmt(pos.hi.v,m.unit)+'<i>'+yr(pos.hi.ms)+'</i></span></div>'
+      +    (pos.reason ? '<div class="why">'+pos.reason+'</div>' : '')
       +  '</div>';
   }else{
-    h += '<div class="range"><div class="ends"><span>履歴がたまると、過去'+DATA.years+'年の中での位置が出ます</span></div></div>';
+    h += '<div class="range"><div class="why">'+pos.reason+'</div></div>';
   }
 
   h += '<div class="detail">'
-    +    chartSVG(pts)
+    +    chartSVG(pos.pts, pos.from)
     +    '<div class="meta"><b>出どころ</b> '+m.source
-    +      '　<b>時点</b> '+(DATA.asof[key] || "不明")+'</div>'
+    +      '<br><b>記録</b> '+ym(all[0].ms)+'〜　<b>時点</b> '+(DATA.asof[key] || "不明")+'</div>'
     +  '</div>';
-
   h += '</div>';
   return h;
 }
@@ -362,31 +515,44 @@ function cardHTML(key){
 /* ---------- 総合サマリー ---------- */
 function summaryHTML(){
   var keys = ["nikkei_per","nikkei_pbr","spx_per","cape","ys_jp","ys_us"];
-  var hot = 0, cold = 0, n = 0;
+  var hot = 0, cold = 0, n = 0, pending = [];
   for(var i=0;i<keys.length;i++){
     var m = DATA.meta[keys[i]];
-    var jd = judge(percentile(points(keys[i])), m.expensive_high);
-    if(!jd) continue;
+    var jd = judge(position(keys[i]), m.expensive_high);
+    if(!jd){ pending.push(m.label); continue; }
     n++;
     if(jd.t.indexOf("割高") >= 0) hot++;
     if(jd.t.indexOf("割安") >= 0) cold++;
   }
+  var per = currentPeriod();
+  var scope = per.years === null ? "全期間" : "直近" + per.t;
   var line, sub;
   if(n === 0){
     line = "判定はまだ出せません";
-    sub  = "過去の履歴がたまると、いまの水準が過去" + DATA.years + "年のどのあたりかを判定します。GitHub Actions が初めて動いたあとに表示されます。";
+    sub  = "この期間で判定できる記録がそろっていません。";
   }else if(hot > cold){
     line = '株式は<span style="color:var(--hot)">割高より</span>　<span class="n">'+hot+'</span>/'+n+' 指標';
-    sub  = "バリュエーション指標のうち " + hot + " 本が過去" + DATA.years + "年の上位に位置しています。";
+    sub  = scope + "で見ると、判定できた " + n + " 本のうち " + hot + " 本が上位にいます。";
   }else if(cold > hot){
     line = '株式は<span style="color:var(--cold)">割安より</span>　<span class="n">'+cold+'</span>/'+n+' 指標';
-    sub  = "バリュエーション指標のうち " + cold + " 本が過去" + DATA.years + "年の下位に位置しています。";
+    sub  = scope + "で見ると、判定できた " + n + " 本のうち " + cold + " 本が下位にいます。";
   }else{
     line = '株式は<span style="color:var(--mid)">中立</span>　<span class="n">'+n+'</span> 指標で拮抗';
-    sub  = "割高側と割安側の指標が同数です。";
+    sub  = scope + "で見ると、割高側と割安側が同数です。";
   }
+  if(pending.length) sub += "<br>記録が足りず判定なし：" + pending.join("・");
   return '<div class="summary"><h2>いまの見立て</h2>'
        + '<div class="verdict">'+line+'</div><p>'+sub+'</p></div>';
+}
+
+/* ---------- 期間の切り替えボタン ---------- */
+function periodsHTML(){
+  var cur = currentPeriod().id, h = '<div class="periods" role="radiogroup" aria-label="表示期間">';
+  for(var i=0;i<PERIODS.length;i++){
+    h += '<button class="per" role="radio" data-per="'+PERIODS[i].id+'" aria-checked="'
+      +  (PERIODS[i].id === cur) + '">'+PERIODS[i].t+'</button>';
+  }
+  return h + '</div>';
 }
 
 /* ---------- タブの構成 ----------
@@ -433,7 +599,8 @@ function render(){
   }
   document.getElementById("tabs").innerHTML = tabs;
 
-  var h = summaryHTML();
+  /* 期間の切り替えは、メモ以外のすべてのタブに効くので一番上に置く */
+  var h = periodsHTML() + summaryHTML();
 
   for(var t2=0;t2<TABS.length;t2++){
     var tab = TABS[t2];
@@ -475,6 +642,19 @@ function render(){
   for(var b=0;b<btns.length;b++){
     btns[b].addEventListener("click", function(){
       showTab(this.getAttribute("data-tab"));
+    });
+  }
+
+  /* 期間の切り替え（選んだ期間は覚えておく。画面の位置は保ったまま描き直す） */
+  var pers = document.querySelectorAll(".per");
+  for(var q=0;q<pers.length;q++){
+    pers[q].addEventListener("click", function(){
+      var id = this.getAttribute("data-per");
+      if(id === currentPeriod().id) return;
+      LOCAL.period = id; saveLocal(LOCAL);
+      var y = window.scrollY;
+      render();
+      window.scrollTo(0, y);
     });
   }
 
@@ -539,10 +719,15 @@ function load(){
     })
     .then(function(json){
       DATA = json;
+      CACHE = {};                                  /* 前回読んだ点を捨てる */
+      /* いちばん新しい実測日（第1版は共通の日付軸の末尾） */
+      var latest = "";
+      if(json.dates){ latest = json.dates[json.dates.length-1]; }
+      else{ for(var k in json.asof){ if(json.asof[k] && json.asof[k] > latest) latest = json.asof[k]; } }
       var d = new Date(json.updated);
       document.getElementById("stamp").innerHTML =
         "更新 " + d.toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})
-        + "<br>" + json.dates[json.dates.length-1] + " 時点";
+        + "<br>" + latest + " 時点";
       render();
     })
     .catch(function(e){
