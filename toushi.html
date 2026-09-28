@@ -40,6 +40,26 @@ header{
   border-bottom:1px solid var(--line); padding-top:env(safe-area-inset-top);
 }
 .hbar{display:flex;align-items:center;gap:10px;padding:10px 0;max-width:720px;margin:0 auto;padding-left:14px;padding-right:14px}
+
+/* ===== タブ（ヘッダーと一緒に上に貼り付く） ===== */
+.tabs{
+  display:flex; gap:2px; max-width:720px; margin:0 auto;
+  padding:0 10px 8px; overflow-x:auto; -webkit-overflow-scrolling:touch;
+  scrollbar-width:none;
+}
+.tabs::-webkit-scrollbar{display:none}
+.tab{
+  flex:1 0 auto; min-width:60px; min-height:44px; padding:0 12px;
+  border:0; background:transparent; color:var(--muted);
+  font:600 15px/1 inherit; border-radius:10px; cursor:pointer; white-space:nowrap;
+}
+.tab[aria-selected="true"]{
+  background:var(--card); color:var(--fg); box-shadow:inset 0 0 0 1px var(--line);
+}
+.tab:active{opacity:.6}
+.panel{display:none}
+.panel.on{display:block}
+.panel > section:first-child{margin-top:16px}
 h1{font-size:18px;margin:0;font-weight:700;letter-spacing:.02em}
 .stamp{font-size:12px;color:var(--muted);margin-left:auto;text-align:right;line-height:1.3}
 .iconbtn{
@@ -156,6 +176,7 @@ footer{margin-top:26px;padding-top:14px;border-top:1px solid var(--line);
     <div class="stamp" id="stamp">読み込み中…</div>
     <button class="iconbtn" id="reload" title="再読み込み" aria-label="再読み込み">⟳</button>
   </div>
+  <div class="tabs" id="tabs" role="tablist"></div>
 </header>
 
 <div class="wrap" id="app">
@@ -177,8 +198,8 @@ var OPEN = {};                    // どのカードを開いているか
 
 /* ---------- localStorage（壊れていても落とさない） ---------- */
 function loadLocal(){
-  try{ return JSON.parse(localStorage.getItem(KEY)) || {memo:"", open:{}}; }
-  catch(e){ return {memo:"", open:{}}; }
+  try{ return JSON.parse(localStorage.getItem(KEY)) || {memo:"", open:{}, tab:""}; }
+  catch(e){ return {memo:"", open:{}, tab:""}; }
 }
 function saveLocal(o){
   try{ localStorage.setItem(KEY, JSON.stringify(o)); }catch(e){}
@@ -368,45 +389,94 @@ function summaryHTML(){
        + '<div class="verdict">'+line+'</div><p>'+sub+'</p></div>';
 }
 
+/* ---------- タブの構成 ----------
+   縦に長すぎて探せなくなるので、用途ごとに画面を分ける。
+   groups は各タブに入れる中身の種類。                                     */
+var TABS = [
+  {id:"judge", t:"判定", groups:[
+      {g:"value",  t:"割安 / 割高", note:"過去の分布の中での位置"},
+      {g:"spread", t:"株 vs 債券",  note:"高いほど株が有利"}]},
+  {id:"rate",  t:"金利", groups:[{g:"rate",  t:"金利とインフレ", note:""}]},
+  {id:"ratio", t:"比率", groups:[{g:"ratio", t:"比率・ドル換算", note:""}]},
+  {id:"price", t:"価格", groups:[{g:"price", t:"価格",          note:""}]},
+  {id:"memo",  t:"メモ", groups:[]}
+];
+
+function currentTab(){
+  for(var i=0;i<TABS.length;i++) if(TABS[i].id === LOCAL.tab) return LOCAL.tab;
+  return TABS[0].id;                       /* 保存値が古い・壊れていたら先頭 */
+}
+
+function showTab(id){
+  LOCAL.tab = id; saveLocal(LOCAL);
+  var panels = document.querySelectorAll(".panel");
+  for(var i=0;i<panels.length;i++){
+    panels[i].classList.toggle("on", panels[i].getAttribute("data-panel") === id);
+  }
+  var btns = document.querySelectorAll(".tab");
+  for(var j=0;j<btns.length;j++){
+    btns[j].setAttribute("aria-selected",
+      btns[j].getAttribute("data-tab") === id ? "true" : "false");
+  }
+  window.scrollTo(0, 0);                   /* 切り替えたら先頭から見せる */
+}
+
 /* ---------- 画面全体を組み立てる ---------- */
 function render(){
-  var groups = [
-    {g:"value",  t:"割安 / 割高",   note:"過去"+DATA.years+"年の中での位置"},
-    {g:"spread", t:"株 vs 債券",    note:"高いほど株が有利"},
-    {g:"rate",   t:"金利とインフレ", note:""},
-    {g:"ratio",  t:"比率",          note:""},
-    {g:"price",  t:"価格",          note:""}
-  ];
+  var active = currentTab();
+
+  /* タブの見出し（ヘッダーの中に置くので、スクロールしても消えない） */
+  var tabs = "";
+  for(var t=0;t<TABS.length;t++){
+    tabs += '<button class="tab" role="tab" data-tab="'+TABS[t].id+'"'
+         +  ' aria-selected="'+(TABS[t].id===active)+'">'+TABS[t].t+'</button>';
+  }
+  document.getElementById("tabs").innerHTML = tabs;
+
   var h = summaryHTML();
 
-  for(var i=0;i<groups.length;i++){
-    var body = "";
-    for(var key in DATA.meta){
-      if(DATA.meta[key].group === groups[i].g) body += cardHTML(key);
+  for(var t2=0;t2<TABS.length;t2++){
+    var tab = TABS[t2];
+    h += '<div class="panel'+(tab.id===active?" on":"")+'" data-panel="'+tab.id+'">';
+    for(var i=0;i<tab.groups.length;i++){
+      var body = "";
+      for(var key in DATA.meta){
+        if(DATA.meta[key].group === tab.groups[i].g) body += cardHTML(key);
+      }
+      if(!body) continue;
+      h += '<section><h2>'+tab.groups[i].t
+        +  (tab.groups[i].note ? '<span>'+tab.groups[i].note+'</span>' : '')
+        +  '</h2>'+body+'</section>';
     }
-    if(!body) continue;
-    h += '<section><h2>'+groups[i].t
-      +  (groups[i].note ? '<span>'+groups[i].note+'</span>' : '')
-      +  '</h2>'+body+'</section>';
-  }
 
-  /* メモ（端末内にだけ保存される） */
-  h += '<section><h2>メモ<span>この端末の中だけに保存されます</span></h2>'
-    +  '<textarea id="memo" placeholder="気づいたこと、次に確認すること…"></textarea>'
-    +  '<div class="row">'
-    +    '<button class="btn" id="exp">書き出す</button>'
-    +    '<button class="btn" id="imp">読み込む</button>'
-    +  '</div></section>';
-
-  /* 収集時に気になった点があれば出す */
-  if(DATA.notes && DATA.notes.length){
-    h += '<div class="notes"><b>データ収集のメモ</b><br>' + DATA.notes.join("<br>") + '</div>';
+    if(tab.id === "memo"){
+      /* メモ（端末内にだけ保存される） */
+      h += '<section><h2>メモ<span>この端末の中だけに保存されます</span></h2>'
+        +  '<textarea id="memo" placeholder="気づいたこと、次に確認すること…"></textarea>'
+        +  '<div class="row">'
+        +    '<button class="btn" id="exp">書き出す</button>'
+        +    '<button class="btn" id="imp">読み込む</button>'
+        +  '</div></section>';
+      /* 収集時に気になった点があれば出す */
+      if(DATA.notes && DATA.notes.length){
+        h += '<div class="notes"><b>データ収集のメモ</b><br>' + DATA.notes.join("<br>") + '</div>';
+      }
+    }
+    h += '</div>';
   }
 
   h += '<footer>公開情報をまとめて眺めるための道具です。投資判断そのものは自分で行ってください。'
     +  '保有数量や資産額はこのページには一切含まれていません。</footer>';
 
   document.getElementById("app").innerHTML = h;
+
+  /* タブの切り替え */
+  var btns = document.querySelectorAll(".tab");
+  for(var b=0;b<btns.length;b++){
+    btns[b].addEventListener("click", function(){
+      showTab(this.getAttribute("data-tab"));
+    });
+  }
 
   /* メモの復元と自動保存 */
   var memo = document.getElementById("memo");

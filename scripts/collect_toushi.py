@@ -21,7 +21,7 @@ import os
 import re
 import sys
 import time
-from urllib.parse import quote
+from urllib.parse import quote, urljoin
 
 import requests
 
@@ -131,13 +131,14 @@ META = {
     "nt":          dict(label="NT倍率",            unit="倍",   group="ratio", expensive_high=None, source="日経平均 ÷ TOPIX"),
     "gsr":         dict(label="金銀比価",          unit="倍",   group="ratio", expensive_high=None, source="金 ÷ 銀"),
     "nikkei_usd":  dict(label="ドル建て日経",      unit="$",    group="ratio", expensive_high=None, source="日経平均 ÷ ドル円"),
+    "topix_usd":   dict(label="ドル建てTOPIX",     unit="$",    group="ratio", expensive_high=None, source="TOPIX ÷ ドル円"),
     "nikkei_gold": dict(label="日経 ÷ 金",         unit="oz",   group="ratio", expensive_high=True,  source="ドル建て日経 ÷ 金価格"),
     "ys_jp":       dict(label="日本 イールドスプレッド", unit="%", group="spread", expensive_high=False, source="100÷日経PER − 日本10年金利"),
     "ys_us":       dict(label="米国 イールドスプレッド", unit="%", group="spread", expensive_high=False, source="100÷S&P500PER − 米10年金利"),
 }
 
 # 派生指標（計算で作るもの）。取得はしない。
-DERIVED = ("bei10", "nt", "gsr", "nikkei_usd", "nikkei_gold", "ys_jp", "ys_us")
+DERIVED = ("bei10", "nt", "gsr", "nikkei_usd", "topix_usd", "nikkei_gold", "ys_jp", "ys_us")
 
 
 # ---------------------------------------------------------------------------
@@ -321,7 +322,10 @@ def _shiller_download():
     urls = []
     if page is not None:
         for href in re.findall(r'href="([^"]*ie_data\.xls[^"]*)"', page.text):
-            urls.append(href.replace("&amp;", "&"))
+            href = href.replace("&amp;", "&")
+            # ページ内のリンクは "/downloads/..." のように途中から書かれていることがある。
+            # そのまま渡すと requests が MissingSchema で落ちるので、必ず絶対URLに直す。
+            urls.append(urljoin("https://shillerdata.com/", href))
     # ページから拾えなかったときの控え（2026-08 時点で有効だったURL）
     urls.append("https://img1.wsimg.com/blobby/go/e5e77e0b-59d1-44d9-ab25-4763ac982e53"
                 "/downloads/e27e58c1-8ae0-488c-a976-a298708c7175/ie_data.xls")
@@ -371,25 +375,42 @@ def fetch_shiller():
         diag("      Shiller: Excelを開けず (%s: %s)" % (type(e).__name__, str(e)[:60]))
         return {}
 
+    def norm(v):
+        return " ".join(str(v).split()).lower() if v is not None else ""
+
     # --- 見出し行を探して列の位置を決める ---
-    col_date = col_p = col_e = col_cape = None
-    for row in rows[:14]:
-        cells = [(" ".join(str(c).split())).lower() if c is not None else "" for c in row]
+    # 見出しは1行に収まっているとは限らず、上下の行に分かれていることがある
+    # （実際 CAPE の列名は複数行に散っていて、1行だけ見ると取り逃す）。
+    # そこで "Date" のある行と、その上2行ぶんを列ごとに繋いで1つの文字列にしてから探す。
+    col_date = col_p = col_e = col_cape = col_cpi = None
+    for ri, row in enumerate(rows[:14]):
+        cells = [norm(c) for c in row]
         if not any(c == "date" for c in cells):
             continue
         col_date = cells.index("date")
-        for i, c in enumerate(cells):
+        block = rows[max(0, ri - 2):ri + 1]
+        width = max(len(r) for r in block)
+        merged = []
+        for i in range(width):
+            parts = [norm(r[i]) for r in block if i < len(r) and norm(r[i])]
+            merged.append(" ".join(parts))
+        for i, c in enumerate(merged):
             if not c:
                 continue
             # CAPE の列。"Excess CAPE Yield" や "TR CAPE" は別物なので避ける
-            if col_cape is None and "cape" in c and "excess" not in c and "yield" not in c and " tr " not in c:
+            if (col_cape is None and ("cape" in c or "p/e10" in c or "pe10" in c)
+                    and "excess" not in c and "yield" not in c and "tr cape" not in c):
                 col_cape = i
             if col_p is None and "comp" in c:                      # "S&P Comp. P"
                 col_p = i
             if col_e is None and "earnings" in c and "real" not in c and "scaled" not in c:
                 col_e = i
-        diag("      Shiller: 列 date=%s P=%s E=%s CAPE=%s"
-             % (col_date, col_p, col_e, col_cape))
+            if col_cpi is None and ("consumer" in c or c.strip() == "cpi"):
+                col_cpi = i
+        # 見出しをそのまま記録しておく。取り違えたときに何を見て判断したかが残る。
+        diag("      Shiller: 見出し = " + " | ".join(m[:26] for m in merged[:16]))
+        diag("      Shiller: 列 date=%s P=%s E=%s CPI=%s CAPE=%s"
+             % (col_date, col_p, col_e, col_cpi, col_cape))
         break
     if col_date is None:
         diag("      Shiller: 見出し行が見つからず")
@@ -401,7 +422,9 @@ def fetch_shiller():
         v = row[i]
         return float(v) if isinstance(v, (int, float)) else None
 
-    per, cape = {}, {}
+    # 10年平均を取るため、20年より前の行も含めて全部集める（あとで切る）
+    per, cape_col = {}, {}
+    price, earn, cpi = {}, {}, {}
     for row in rows:
         d = cell(row, col_date)
         if d is None:
@@ -412,19 +435,88 @@ def fetch_shiller():
         if year < 1871 or not 1 <= month <= 12:
             continue
         date = "%04d-%02d-01" % (year, month)
-        if date < CUTOFF:
-            continue
+        p, e, ci = cell(row, col_p), cell(row, col_e), cell(row, col_cpi)
+        if p:
+            price[date] = p
+        if e:
+            earn[date] = e
+        if ci:
+            cpi[date] = ci
         c = cell(row, col_cape)
-        if c and 3 < c < 80:                      # CAPE がありえる範囲か確かめる
-            cape[date] = round(c, 2)
-        p, e = cell(row, col_p), cell(row, col_e)
+        if c and 3 < c < 80:
+            cape_col[date] = round(c, 2)
         if p and e and e > 0:
             v = p / e
             if 3 < v < 120:                       # 実績PER がありえる範囲か確かめる
                 per[date] = round(v, 2)
 
-    diag("      Shiller: CAPE %d点 / 実績PER %d点" % (len(cape), len(per)))
+    # 見出しから拾った CAPE の列が、本当に CAPE なのかを中身で確かめる。
+    # 見出しが結合セルになっていて、隣の空列を掴んでしまうことがあるため。
+    cape = cape_col if _looks_like_cape(cape_col) else {}
+    if cape:
+        diag("      Shiller: CAPE は見出しの列から取得")
+    else:
+        if cape_col:
+            diag("      Shiller: 見出しの列は CAPE らしくないので使わない（%d点）" % len(cape_col))
+        cape = _cape_from_pe(price, earn, cpi)
+        if cape:
+            diag("      Shiller: CAPE を定義どおり計算して作成")
+
+    trim = lambda dd: {d: v for d, v in dd.items() if d >= CUTOFF}   # noqa: E731
+    cape, per = trim(cape), trim(per)
+    if cape:
+        last = max(cape)
+        diag("      Shiller: CAPE %d点（最新 %s = %s）" % (len(cape), last, cape[last]))
+    else:
+        diag("      Shiller: CAPE を作れず（P=%d点 E=%d点 CPI=%d点）"
+             % (len(price), len(earn), len(cpi)))
+    diag("      Shiller: 実績PER %d点" % len(per))
     return {"cape": cape, "spx_per": per}
+
+
+def _looks_like_cape(col):
+    """CAPE らしい数字の並びかどうかを、名前ではなく中身で判定する。"""
+    if len(col) < 200:
+        return False
+    vals = sorted(v for _, v in sorted(col.items())[-240:])
+    if not vals:
+        return False
+    median = vals[len(vals) // 2]
+    return 5.0 <= median <= 60.0
+
+
+def _cape_from_pe(price, earn, cpi):
+    """CAPE を定義どおり計算する。
+    CAPE = 実質株価 ÷ 過去10年(120ヶ月)の実質利益の平均。
+    実質化の基準時点は分子と分母で約分されて消えるので、CPI で割るだけでよい。
+    """
+    import bisect
+    real_e_dates, real_e_vals = [], []
+    for d in sorted(earn):
+        c = cpi.get(d)
+        if c:
+            real_e_dates.append(d)
+            real_e_vals.append(earn[d] / c)
+    if len(real_e_vals) < 120:
+        return {}
+
+    out = {}
+    for d in sorted(price):
+        c = cpi.get(d)
+        if not c:
+            continue
+        # d 以前の実質利益を、直近120ヶ月ぶん取る
+        hi = bisect.bisect_right(real_e_dates, d)
+        window = real_e_vals[max(0, hi - 120):hi]
+        if len(window) < 100:                     # 10年ぶん揃わない期間は出さない
+            continue
+        avg = sum(window) / len(window)
+        if avg <= 0:
+            continue
+        v = (price[d] / c) / avg
+        if 3 < v < 80:
+            out[d] = round(v, 2)
+    return out
 
 
 def fetch_multpl(path):
@@ -633,8 +725,19 @@ def load_previous():
     dates = prev.get("dates", [])
     out = {}
     for key, values in prev.get("series", {}).items():
-        out[key] = {dates[i]: v for i, v in enumerate(values)
-                    if v is not None and i < len(dates)}
+        col, prev_val = {}, object()
+        for i, v in enumerate(values):
+            if v is None or i >= len(dates):
+                continue
+            # 前回ファイルの値は「前方補完」された状態で並んでいる。
+            # 同じ値が続いている区間は補完でできたものなので、先頭だけ残す。
+            # これをやらないと、1点しかない系列が読み書きのたびに水増しされ、
+            # 平らな線に対して割安・割高の判定が出てしまう。
+            if v == prev_val:
+                continue
+            col[dates[i]] = v
+            prev_val = v
+        out[key] = col
     return out
 
 
@@ -703,11 +806,15 @@ def add_derived(table, dates):
             out["nt"][d] = round(nk / tp, 3)
         if gd and sv:
             out["gsr"][d] = round(gd / sv, 2)
+        # ドル換算は「その日のドル円」で割る。円安で指数が上がっても、
+        # ドルで見れば増えていない、という状況を見分けるための指標。
         nk_usd = nk / fx if (nk and fx) else None
         if nk_usd:
             out["nikkei_usd"][d] = round(nk_usd, 2)
             if gd:
                 out["nikkei_gold"][d] = round(nk_usd / gd, 4)
+        if tp and fx:
+            out["topix_usd"][d] = round(tp / fx, 3)
         if np_ and j10 is not None:
             out["ys_jp"][d] = round(100.0 / np_ - j10, 2)
         if sp_ and u10 is not None:

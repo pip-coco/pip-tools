@@ -123,15 +123,25 @@ SHILLER_ROWS = [
 ]
 
 
-def make_shiller_xlsx():
-    """新形式(.xlsx)版のダミー。"""
+def make_shiller_xlsx(split_header=False):
+    """新形式(.xlsx)版のダミー。
+    split_header=True にすると、実物と同じく見出しを2行に割って作る
+    （CAPE の列名が上下に分かれていて取り逃した件の再現）。"""
     import openpyxl
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Data"
     ws.append(["Robert Shiller"] + [None] * 6)
-    ws.append([None] * 7)
-    ws.append(SHILLER_HEADER)
+    if split_header:
+        # 上の行に前半、下の行に後半を置く。"Date" は下の行にある。
+        ws.append([None, "S&P", None, None, None, None, None, None, None,
+                   "Cyclically Adjusted", "TR", "Excess"])
+        ws.append(["Date", "Comp. P", "Dividend D", "Earnings E", "Consumer Price Index",
+                   "Date Fraction", "Long Interest Rate GS10", "Real Price", "Real Earnings",
+                   "Price Earnings Ratio P/E10 or CAPE", "CAPE", "CAPE Yield"])
+    else:
+        ws.append([None] * 7)
+        ws.append(SHILLER_HEADER)
     for r in SHILLER_ROWS:
         ws.append(r)
     buf = io.BytesIO()
@@ -170,15 +180,56 @@ def make_shiller_xls():
     return zlib.decompress(base64.b64decode(_SHILLER_XLS_B64))
 
 
-SHILLER_PAGE = ('<html><body><a href="https://img1.wsimg.com/blobby/go/xxx/'
-                'downloads/yyy/ie_data.xls?ver=123">US Stock Markets 1871-Present</a></body></html>')
+def shiller_long_series():
+    """30年ぶんの月次ダミー（1996-09〜2026-08）。株価・利益・物価が緩やかに伸びる。"""
+    price, earn, cpi = {}, {}, {}
+    for k in range(360):
+        y, m = 1996 + (8 + k) // 12, (8 + k) % 12 + 1
+        d = "%04d-%02d-01" % (y, m)
+        price[d] = 600.0 * (1.008 ** k)        # 株価は月0.8%成長
+        earn[d] = 40.0 * (1.006 ** k)          # 利益は月0.6%成長
+        cpi[d] = 100.0 * (1.002 ** k)          # 物価は月0.2%上昇
+    return price, earn, cpi
+
+
+def make_shiller_long(cape_filled):
+    """30年ぶんの Excel。cape_filled=False なら CAPE 列を空にして、
+    「見出しにつられて隣の空列を掴んでしまった」状況を再現する。"""
+    import openpyxl
+    price, earn, cpi = shiller_long_series()
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Data"
+    ws.append(["Robert Shiller"] + [None] * 6)
+    ws.append([None] * 7)
+    ws.append(["Date", "S&P Comp. P", "Dividend D", "Earnings E", "Consumer Price Index",
+               "Date Fraction", "Long Interest Rate GS10", "CAPE"])
+    for k, d in enumerate(sorted(price)):
+        y, m = int(d[:4]), int(d[5:7])
+        ws.append([y + m / 100.0, price[d], 10.0, earn[d], cpi[d], 0, 4.0,
+                   (25.0 + (k % 20)) if cape_filled else None])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+# 実物のページは、配布ファイルへのリンクを "/downloads/..." のように
+# 途中から書いていることがある。そのまま requests に渡すと MissingSchema で落ちる。
+SHILLER_PAGE = ('<html><body><a href="/downloads/yyy/ie_data.xls?ver=123">'
+                'US Stock Markets 1871-Present</a></body></html>')
 SHILLER_XLSX = make_shiller_xlsx()
+SHILLER_XLSX_SPLIT = make_shiller_xlsx(split_header=True)
 SHILLER_XLS = make_shiller_xls()
 SHILLER_BLOB = SHILLER_XLS          # 既定は実物と同じ旧形式で試す
 
 
 def fake_get(url, timeout=25, tries=2, **kw):
     C.get.last_error = ""
+    # 本物の requests と同じく、スキームのないURLは受け付けない。
+    # これで「相対リンクをそのまま渡していないか」を検査できる。
+    if not url.startswith("http"):
+        C.get.last_error = "MissingSchema"
+        return None
     if "finance.yahoo.com" in url:
         if "%5EN225" in url or "N225" in url:
             return FakeResponse(yahoo_payload(60, 60000))
@@ -245,21 +296,54 @@ def main():
 
     print("\n[5] Shiller (Excel)")
     global SHILLER_BLOB
-    for fmt, blob in (("旧形式 .xls", SHILLER_XLS), ("新形式 .xlsx", SHILLER_XLSX)):
+    for fmt, blob in (("旧形式 .xls", SHILLER_XLS),
+                      ("新形式 .xlsx", SHILLER_XLSX),
+                      ("見出しが2行に割れている", SHILLER_XLSX_SPLIT)):
         SHILLER_BLOB = blob
         s = C.fetch_shiller()
-        check("[%s] CAPE が取れる (42.4)" % fmt,
-              s.get("cape", {}).get("2026-08-01") == 42.4,
-              str(s.get("cape", {}).get("2026-08-01")))
         check("[%s] 実績PER を P÷E で作る (7500/254=29.53)" % fmt,
               s.get("spx_per", {}).get("2026-06-01") == 29.53,
               str(s.get("spx_per", {}).get("2026-06-01")))
         check("[%s] Eが空の月はPERを作らない" % fmt,
               "2026-08-01" not in s.get("spx_per", {}))
-        check("[%s] Excess CAPE Yield を CAPE と取り違えない" % fmt,
-              s.get("cape", {}).get("2026-06-01") == 41.9,
-              str(s.get("cape", {}).get("2026-06-01")))
+        # 3行しかないので CAPE は作れないのが正しい。
+        # 少ない点数から無理に判定用の数字を作らないことを確かめる。
+        check("[%s] 履歴が足りなければ CAPE を作らない" % fmt,
+              s.get("cape", {}) == {}, str(s.get("cape", {})))
     SHILLER_BLOB = SHILLER_XLS
+
+    print("\n[5d] CAPE らしさを名前ではなく中身で見分ける")
+    real_cape = {"%04d-%02d-01" % (2006 + i // 12, i % 12 + 1): 20.0 + (i % 25)
+                 for i in range(240)}
+    excess_yield = {"%04d-%02d-01" % (2006 + i // 12, i % 12 + 1): 0.5 + (i % 5) * 0.4
+                    for i in range(240)}
+    check("本物の CAPE らしい並びは受け入れる", C._looks_like_cape(real_cape))
+    check("Excess CAPE Yield のような小さい値は弾く", not C._looks_like_cape(excess_yield))
+    check("点数が少なすぎるものは弾く",
+          not C._looks_like_cape({"2026-01-01": 41.9, "2026-02-01": 42.0}))
+
+    print("\n[5c] CAPE を定義どおり計算できる（見出しが当てにならない場合）")
+    price, earn, cpi_s = shiller_long_series()
+    SHILLER_BLOB = make_shiller_long(cape_filled=False)
+    s = C.fetch_shiller()
+    cape = s.get("cape", {})
+    check("空の CAPE 列を使わない（水増ししない）", len(cape) > 100, "%d点" % len(cape))
+    last = max(cape)
+    dates_e = sorted(earn)
+    i = dates_e.index(last)
+    window = [earn[d] / cpi_s[d] for d in dates_e[max(0, i - 119):i + 1]]
+    expect = round((price[last] / cpi_s[last]) / (sum(window) / len(window)), 2)
+    check("計算値が定義と一致する", abs(cape[last] - expect) < 0.01,
+          "計算 %s / 期待 %s" % (cape[last], expect))
+    check("実績PER も同時に取れる", len(s.get("spx_per", {})) > 100,
+          "%d点" % len(s.get("spx_per", {})))
+    SHILLER_BLOB = make_shiller_long(cape_filled=True)
+    got = C.fetch_shiller().get("cape", {}).get("2026-08-01")
+    check("埋まっている CAPE 列はそのまま使う", got == 25.0 + (359 % 20), str(got))
+    SHILLER_BLOB = SHILLER_XLS
+
+    print("\n[5e] 相対リンクでも Shiller を落とせる（MissingSchema の件）")
+    check("ページ内の相対リンクを絶対URLに直す", C._shiller_download() is not None)
 
     print("\n[5b] Excel でないものを掴まない")
     SHILLER_BLOB = BOTWALL
@@ -291,7 +375,31 @@ def main():
     check("multpl は空を返す", C.fetch_multpl("shiller-pe") == {})
     check("FRED は空を返す", C.fetch_fred("DGS10") == {})
 
+    print("\n[7b] 前回ファイルの読み戻しで点数を水増ししない")
+    import tempfile
+    prev = {
+        "dates": ["2026-08-01", "2026-08-02", "2026-08-03", "2026-08-04", "2026-08-05"],
+        "series": {
+            # 1点しか実測がなく、あとは前方補完で同じ値が並んでいる状態
+            "cape": [None, 41.96, 41.96, 41.96, 41.96],
+            # こちらは毎日ちゃんと動いている実測
+            "nikkei": [100.0, 101.0, 102.0, 103.0, 104.0],
+        },
+    }
+    tmpf = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8")
+    json.dump(prev, tmpf, ensure_ascii=False)
+    tmpf.close()
+    saved = C.OUT_PATH
+    C.OUT_PATH = tmpf.name
+    back = C.load_previous()
+    C.OUT_PATH = saved
+    os.unlink(tmpf.name)
+    check("補完でできた重複を1点に畳む", len(back["cape"]) == 1, str(back["cape"]))
+    check("畳んだあとの日付が最初の実測日", list(back["cape"]) == ["2026-08-02"], str(back["cape"]))
+    check("動いている系列はそのまま残す", len(back["nikkei"]) == 5, str(len(back["nikkei"])))
+
     print("\n[8] 通しで動かす")
+    SHILLER_BLOB = make_shiller_long(cape_filled=False)   # 実物に近い30年ぶんで通す
     C.DIAG[:] = []
     C.NOTES[:] = []
     raw = C.collect()
@@ -316,6 +424,24 @@ def main():
     check("金銀比価が計算されている", len(table["gsr"]) > 0)
     check("日本イールドスプレッドが計算されている", len(table["ys_jp"]) > 0)
     check("米国イールドスプレッドが計算されている", len(table["ys_us"]) > 0)
+
+    print("\n[9] ドル換算（その日のドル円で割る）")
+    check("ドル建て日経が計算されている", len(table["nikkei_usd"]) > 0)
+    check("ドル建てTOPIXが計算されている", len(table["topix_usd"]) > 0,
+          "%d点" % len(table["topix_usd"]))
+    # 同じ日の 指数 ÷ ドル円 になっているかを手計算で突き合わせる
+    d0 = max(table["topix_usd"])
+    tp = C.latest_on_or_before(table["topix"], d0)
+    fx = C.latest_on_or_before(table["usdjpy"], d0)
+    check("TOPIX ÷ ドル円 と一致する",
+          abs(table["topix_usd"][d0] - tp / fx) < 0.01,
+          "%s ÷ %.3f = %.3f / 値 %s" % (round(tp, 2), fx, tp / fx, table["topix_usd"][d0]))
+    nk = C.latest_on_or_before(table["nikkei"], d0)
+    check("日経 ÷ ドル円 と一致する",
+          abs(table["nikkei_usd"][d0] - nk / fx) < 0.01)
+    # ドル円が取れない日は作らない（円のまま出してしまわないこと）
+    t2 = C.add_derived({"topix": {"2026-08-21": 4000.0}, "usdjpy": {}}, ["2026-08-21"])
+    check("ドル円がなければドル建ては作らない", t2["topix_usd"] == {}, str(t2["topix_usd"]))
 
     print("\n" + "=" * 52)
     if FAIL:
