@@ -86,6 +86,11 @@ def true_spx(d):
     return round(4.0 * math.exp(0.045 * t), 2)
 
 
+def true_ndx(d):
+    t = years_since(d, 1985)
+    return round(250.0 * math.exp(0.12 * t), 2)
+
+
 def true_usdjpy(d):
     t = years_since(d, 1996)
     return round(120.0 + 20.0 * math.sin(t / 3.0), 3)
@@ -93,12 +98,12 @@ def true_usdjpy(d):
 
 # 取得先ごとの「いつから持っているか」
 YAHOO_START = {"^N225": dt.date(1965, 1, 5), "^TPX": dt.date(2021, 4, 1),
-               "1306.T": dt.date(2001, 7, 13), "^GSPC": dt.date(1927, 12, 30),
+               "1306.T": dt.date(2001, 7, 13), "^GSPC": dt.date(1927, 12, 30), "^NDX": dt.date(1985, 10, 1),
                "JPY=X": dt.date(1996, 10, 30)}
 YAHOO_TRUE = {"^N225": true_nikkei, "^TPX": true_topix, "1306.T": true_etf,
-              "^GSPC": true_spx, "JPY=X": true_usdjpy}
+              "^GSPC": true_spx, "^NDX": true_ndx, "JPY=X": true_usdjpy}
 YAHOO_OFFSET = {"^N225": 32400, "^TPX": 32400, "1306.T": 32400,   # 東京 UTC+9
-                "^GSPC": -14400, "JPY=X": 3600}
+                "^GSPC": -14400, "^NDX": -14400, "JPY=X": 3600}
 
 
 def month_end(d):
@@ -381,6 +386,10 @@ def main():
     fri = [k for k in w if dt.date.fromisoformat(k).weekday() == 4]
     check("週足は金曜の日付になる", len(fri) >= len(w) - 1, "%d/%d" % (len(fri), len(w)))
     y = C.fetch_yahoo(["^N225"])
+    check("余計な桁を丸める（64611.1484375 → 64611.15）", C.tidy(64611.1484375) == 64611.15)
+    check("ドル円の小数3桁は削らない（158.985 のまま）", C.tidy(158.985) == 158.985
+          and C.tidy(158.98500001) == 158.985)
+    check("小さい値も有効数字で残す", C.tidy(0.0901234567) == 0.09012346)
     check("月足・週足・日足を重ねる", len(y) > len(m), "%d点" % len(y))
 
     print("\n[2] 日経公式CSV（列の並びが 日付,終値,始値,… で Shift-JIS）")
@@ -540,6 +549,15 @@ def main():
     check("米国イールドスプレッドは月次PERと数日前の金利で作る",
           der["ys_us"].get("2026-09-01") == round(100 / 25.0 - 4.0, 2), der["ys_us"])
     check("BEI = 名目 − 実質（名目がなければ作らない）", der["bei10"] == {}, der["bei10"])
+    tbl2 = {"spx": {"2026-09-25": 7600.0, "1990-01-31": 330.0},
+            "ndx": {"2026-09-25": 25000.0},
+            "usdjpy": {"2026-09-25": 150.0}}
+    der2 = C.add_derived(tbl2)
+    check("円建てS&P500 = その日のS&P500 × その日のドル円",
+          der2["spx_jpy"].get("2026-09-25") == 7600.0 * 150.0, der2["spx_jpy"])
+    check("円建てナスダック100 = その日の指数 × その日のドル円",
+          der2["ndx_jpy"].get("2026-09-25") == 25000.0 * 150.0, der2["ndx_jpy"])
+    check("ドル円がない時代(1990年)の円建ては作らない", "1990-01-31" not in der2["spx_jpy"])
 
     print("\n[14] 通しで動かす（初回：旧形式のファイルから移行）")
     tmp = tempfile.mkdtemp()
@@ -573,6 +591,17 @@ def main():
     check("TOPIX の出どころに換算区間を書く", "1306" in out["meta"]["topix"]["source"],
           out["meta"]["topix"]["source"])
     check("ドル建てTOPIX", len(out["series"]["topix_usd"]["t"]) > 100)
+    check("ナスダック100は1985年から", first["ndx"] <= 19851031, first["ndx"])
+    check("円建てS&P500・ナスダック100はドル円がある1996年から",
+          first["spx_jpy"] == first["usdjpy"] and first["ndx_jpy"] == first["usdjpy"],
+          (first["spx_jpy"], first["ndx_jpy"], first["usdjpy"]))
+    # 最新日で、円建て ＝ 指数 × ドル円 になっているかを本当の値と突き合わせる
+    sj = out["series"]["spx_jpy"]
+    last_t = sj["t"][-1]
+    ld = dt.date(last_t // 10000, last_t // 100 % 100, last_t % 100)
+    want = round(true_spx(ld) * true_usdjpy(ld))
+    check("円建てS&P500の最新値が 指数×ドル円 と一致", abs(sj["v"][-1] - want) < 1.0,
+          "%s / 期待 %s" % (sj["v"][-1], want))
     check("米国イールドスプレッドは1871年から（実績PERとShillerの長期金利）",
           first["ys_us"] == 18710101, first["ys_us"])
     cape_t = out["series"]["cape"]["t"]

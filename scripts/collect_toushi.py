@@ -121,6 +121,13 @@ def decode_jp(content):
     return content.decode("cp932", errors="replace")
 
 
+def tidy(v):
+    """値の桁をそろえる。Yahoo は 64611.1484375 のような余計な桁を付けてくるので、
+    有効数字7桁に丸める（ファイルを軽くするため）。
+    小数点以下の桁数で丸めると、ドル円（158.985 のように小数3桁で建つ）まで削れてしまう。"""
+    return float("%.7g" % v)
+
+
 def span(col):
     return "%s〜%s" % (min(col), max(col)) if col else "なし"
 
@@ -135,6 +142,7 @@ META = {
     "nikkei":      dict(label="日経平均株価",      unit="円",   group="price", expensive_high=None, source="Yahoo Finance ^N225 / 日経公式"),
     "topix":       dict(label="TOPIX",             unit="pt",   group="price", expensive_high=None, source="Yahoo Finance ^TPX"),
     "spx":         dict(label="S&P500",            unit="pt",   group="price", expensive_high=None, source="Yahoo Finance ^GSPC / Shiller"),
+    "ndx":         dict(label="ナスダック100",     unit="pt",   group="price", expensive_high=None, source="Yahoo Finance ^NDX"),
     "gold":        dict(label="金",                unit="$/oz", group="price", expensive_high=None, source="LBMA 金価格(PM)"),
     "silver":      dict(label="銀",                unit="$/oz", group="price", expensive_high=None, source="LBMA 銀価格"),
     "usdjpy":      dict(label="ドル円",            unit="円",   group="price", expensive_high=None, source="Yahoo Finance JPY=X"),
@@ -153,15 +161,18 @@ META = {
 
     "nt":          dict(label="NT倍率",            unit="倍",   group="ratio", expensive_high=None, source="日経平均 ÷ TOPIX"),
     "gsr":         dict(label="金銀比価",          unit="倍",   group="ratio", expensive_high=None, source="金 ÷ 銀"),
-    "nikkei_usd":  dict(label="ドル建て日経",      unit="$",    group="ratio", expensive_high=None, source="日経平均 ÷ その日のドル円"),
-    "topix_usd":   dict(label="ドル建てTOPIX",     unit="$",    group="ratio", expensive_high=None, source="TOPIX ÷ その日のドル円"),
+    "nikkei_usd":  dict(label="ドル建て日経",      unit="$",    group="fx", expensive_high=None, source="日経平均 ÷ その日のドル円"),
+    "topix_usd":   dict(label="ドル建てTOPIX",     unit="$",    group="fx", expensive_high=None, source="TOPIX ÷ その日のドル円"),
+    "spx_jpy":     dict(label="円建てS&P500",      unit="円",   group="fx", expensive_high=None, source="S&P500 × その日のドル円"),
+    "ndx_jpy":     dict(label="円建てナスダック100", unit="円", group="fx", expensive_high=None, source="ナスダック100 × その日のドル円"),
     "nikkei_gold": dict(label="日経 ÷ 金",         unit="oz",   group="ratio", expensive_high=True,  source="ドル建て日経 ÷ 金価格"),
     "ys_jp":       dict(label="日本 イールドスプレッド", unit="%", group="spread", expensive_high=False, source="100÷日経PER − 日本10年金利"),
     "ys_us":       dict(label="米国 イールドスプレッド", unit="%", group="spread", expensive_high=False, source="100÷S&P500PER − 米10年金利"),
 }
 
 # 計算で作る系列。取得はしない。
-DERIVED = ("bei10", "nt", "gsr", "nikkei_usd", "topix_usd", "nikkei_gold", "ys_jp", "ys_us")
+DERIVED = ("bei10", "nt", "gsr", "nikkei_usd", "topix_usd", "spx_jpy", "ndx_jpy",
+           "nikkei_gold", "ys_jp", "ys_us")
 
 
 # ---------------------------------------------------------------------------
@@ -233,7 +244,7 @@ def yahoo_chart(symbol, rng, interval):
             elif interval == "1wk":                  # 週足 → その週の金曜
                 day = day + dt.timedelta(days=4)
             day = min(day, TODAY)
-            out[day.isoformat()] = float(closes[i])
+            out[day.isoformat()] = tidy(float(closes[i]))
         if out:
             return out
     return {}
@@ -838,6 +849,9 @@ def collect():
     if spx and shiller.get("price"):
         diag("  S&P500: %s より前を Shiller の月次で補った" % min(spx))
 
+    print("■ ナスダック100")
+    raw["ndx"] = try_sources("ndx", [("Yahoo Finance", lambda: fetch_yahoo(["^NDX"]))])
+
     print("■ 金・銀（LBMA）")
     raw["gold"] = try_sources("gold", [
         ("LBMA", lambda: fetch_lbma("gold_pm")),
@@ -1068,6 +1082,9 @@ def add_derived(table):
     # ドル換算は「その日のドル円」で割る。円安で上がっただけなのかを見分けるため
     ratio("nikkei_usd", "nikkei", "usdjpy", 7, lambda n, fx: round(n / fx, 2) if fx else None)
     ratio("topix_usd", "topix", "usdjpy", 7, lambda t, fx: round(t / fx, 3) if fx else None)
+    # 円建ては「その日のドル円」を掛ける。日本から買ったときの値動き（為替込み）を見るため
+    ratio("spx_jpy", "spx", "usdjpy", 7, lambda s, fx: round(s * fx))
+    ratio("ndx_jpy", "ndx", "usdjpy", 7, lambda n, fx: round(n * fx))
     ratio("nikkei_gold", "nikkei_usd", "gold", 7, lambda n, gd: round(n / gd, 4) if gd else None)
     ratio("ys_jp", "nikkei_per", "jp10y", 10, lambda p, j: round(100.0 / p - j, 2) if p else None)
     ratio("ys_us", "spx_per", "dgs10", 45, lambda p, u: round(100.0 / p - u, 2) if p else None)
